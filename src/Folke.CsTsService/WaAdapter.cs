@@ -33,6 +33,9 @@ namespace Folke.CsTsService
 
         public string GetRouteFormat(MethodInfo methodInfo)
         {
+            var format = methodInfo.GetAttributeProperty<string>("RouteAttribute", "Format")
+                ?? methodInfo.GetAttributeProperty<string>("RouteAttribute", "Template");
+            if (format != null) return format;
             if (methodInfo.HasAttribute("HttpGetAttribute"))
                 return methodInfo.GetAttributeProperty<string>("HttpGetAttribute", "Template") ?? string.Empty;
             if (methodInfo.HasAttribute("HttpPostAttribute"))
@@ -41,8 +44,7 @@ namespace Folke.CsTsService
                 return methodInfo.GetAttributeProperty<string>("HttpPutAttribute", "Template") ?? string.Empty;
             if (methodInfo.HasAttribute("HttpDeleteAttribute"))
                 return methodInfo.GetAttributeProperty<string>("HttpDeleteAttribute", "Template") ?? string.Empty;
-            return methodInfo.GetAttributeProperty<string>("RouteAttribute", "Format")
-                ?? methodInfo.GetAttributeProperty<string>("RouteAttribute", "Template");
+            return null;
         }
 
         public Type GetReturnType(MethodInfo methodInfo)
