@@ -1,0 +1,6 @@
+.vs
+*.crunchsolution.cache
+*.ncrunchsolution
+src/Folke.CsTsService/bin
+*.user
+*.lock.json

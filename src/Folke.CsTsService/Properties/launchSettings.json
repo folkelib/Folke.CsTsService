@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "Folke.CsTsService": {
+      "commandName": "Folke.CsTsService",
+      "commandLineArgs": "\"C:\\Users\\Sidoine\\Documents\\Visual Studio 2013\\Projects\\myshowcompany\\MyShowCompany.Controllers\\bin\\Debug\\MyShowCompany.Controllers.dll\" -o \"C:\\Users\\Sidoine\\Documents\\Visual Studio 2013\\Projects\\myshowcompany\\MyShowCompany.Client\\src\\services\\services.ts\""
+    },
+    "Galerie": {
+      "commandName": "Folke.CsTsService",
+      "commandLineArgs": "\"C:\\Users\\Sidoine\\Documents\\Git\\gallerie\\artifacts\\bin\\Galerie.Server\\Debug\\dnx451\\Galerie.Server.dll\" -o \"C:\\Users\\Sidoine\\Documents\\Git\\gallerie\\Galerie.Client\\src\\services\\services.ts\" -m"
+    }
+  }
+}

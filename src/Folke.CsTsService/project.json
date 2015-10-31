@@ -1,0 +1,25 @@
+﻿{
+  "version": "1.0.0-*",
+  "description": "Folke.CsTsService Console Application",
+  "authors": [ "Sidoine" ],
+  "tags": [ "" ],
+  "projectUrl": "",
+  "licenseUrl": "",
+
+  "dependencies": {
+  },
+
+  "commands": {
+    "Folke.CsTsService": "Folke.CsTsService"
+  },
+
+  "frameworks": {
+    "net45": {
+      "frameworkAssemblies": {"System.ComponentModel.DataAnnotations":"4.0.0.0"}
+    },
+    "dnx451": {
+      "frameworkAssemblies": { "System.ComponentModel.DataAnnotations": "4.0.0.0" },
+      "dependencies": { "Microsoft.AspNet.Mvc": "6.0.0-beta7" }
+    }
+  }
+}
