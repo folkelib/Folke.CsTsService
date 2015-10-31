@@ -19,7 +19,10 @@
     },
     "dnx451": {
       "frameworkAssemblies": { "System.ComponentModel.DataAnnotations": "4.0.0.0" },
-      "dependencies": { "Microsoft.AspNet.Mvc": "6.0.0-beta7" }
+      "dependencies": {
+        "Microsoft.AspNet.Mvc": "6.0.0-beta8",
+        "Folke.Mvc.Extensions":  "1.0.0-beta-*"
+      }
     }
   }
 }

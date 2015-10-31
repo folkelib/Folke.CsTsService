@@ -33,6 +33,7 @@ namespace Folke.CsTsService
         {
             var attribute = type.GetTypeInfo().GetCustomAttributes().FirstOrDefault(x => x.GetType().Name == attributeName);
             if (attribute == null) return default(T);
+            if (attribute.GetType().GetProperty(propertyName) == null) return default(T);
             return (T)attribute.GetType().GetProperty(propertyName).GetValue(attribute);
         }
 
@@ -40,6 +41,7 @@ namespace Folke.CsTsService
         {
             var attribute = type.GetCustomAttributes().FirstOrDefault(x => x.GetType().Name == attributeName);
             if (attribute == null) return default(T);
+            if (attribute.GetType().GetProperty(propertyName) == null) return default(T);
             return (T)attribute.GetType().GetProperty(propertyName).GetValue(attribute);
         }
 

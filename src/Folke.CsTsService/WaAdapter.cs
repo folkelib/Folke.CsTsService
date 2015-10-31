@@ -20,18 +20,29 @@ namespace Folke.CsTsService
 
         public string GetRoutePrefixName(Type type)
         {
-            return type.GetAttributeProperty<string>("RoutePrefixAttribute", "Name");
+            return type.GetAttributeProperty<string>("RoutePrefixAttribute", "Name") ?? type.GetAttributeProperty<string>("RouteAttribute", "Template");
         }
 
         public bool IsAction(MethodInfo methodInfo)
         {
             return !methodInfo.HasAttribute("NonActionAttribute") && methodInfo.ReturnType.Name != "ActionResult"
-                && methodInfo.HasAttribute("RouteAttribute");
+                && (methodInfo.HasAttribute("RouteAttribute")
+                || methodInfo.HasAttribute("HttpGetAttribute") || methodInfo.HasAttribute("HttpPostAttribute")
+                || methodInfo.HasAttribute("HttpDeleteAttribute") || methodInfo.HasAttribute("HttpPutAttribute"));
         }
 
         public string GetRouteFormat(MethodInfo methodInfo)
         {
-            return methodInfo.GetAttributeProperty<string>("RouteAttribute", "Format");
+            if (methodInfo.HasAttribute("HttpGetAttribute"))
+                return methodInfo.GetAttributeProperty<string>("HttpGetAttribute", "Template") ?? string.Empty;
+            if (methodInfo.HasAttribute("HttpPostAttribute"))
+                return methodInfo.GetAttributeProperty<string>("HttpPostAttribute", "Template") ?? string.Empty;
+            if (methodInfo.HasAttribute("HttpPutAttribute"))
+                return methodInfo.GetAttributeProperty<string>("HttpPutAttribute", "Template") ?? string.Empty;
+            if (methodInfo.HasAttribute("HttpDeleteAttribute"))
+                return methodInfo.GetAttributeProperty<string>("HttpDeleteAttribute", "Template") ?? string.Empty;
+            return methodInfo.GetAttributeProperty<string>("RouteAttribute", "Format")
+                ?? methodInfo.GetAttributeProperty<string>("RouteAttribute", "Template");
         }
 
         public Type GetReturnType(MethodInfo methodInfo)

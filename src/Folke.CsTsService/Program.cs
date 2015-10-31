@@ -7,6 +7,16 @@ namespace Folke.CsTsService
     {
         static void Main(string[] args)
         {
+            if (args.Length == 0)
+            {
+                Console.WriteLine("Usage:");
+                Console.WriteLine("   Folke.CsTsService (Assembly.dll)+ [-h] -o OutputPath [-m]");
+                Console.WriteLine("Options:");
+                Console.WriteLine("   -h helper namespace (default: helper)");
+                Console.WriteLine("   -o typescript file output path");
+                Console.WriteLine("   -m use MvcAdapter");
+                return;
+            }
             var assemblies = new List<string>();
             string helperNamespace = ".";
             string outputPath = "services.ts";

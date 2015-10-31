@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -28,6 +27,12 @@ namespace Folke.CsTsService
         }
 
         public void Write(IEnumerable<string> assemblies, string outputPath, string helperNamespace)
+        {
+            var siteAssemblies = assemblies.Select(Assembly.LoadFrom).ToList();
+            Write(siteAssemblies, outputPath, helperNamespace);
+        }
+
+        public void Write(IEnumerable<Assembly> assemblies, string outputPath, string helperNamespace)
         {
             var controllers = LoadControllers(assemblies);
 
@@ -589,14 +594,12 @@ namespace Folke.CsTsService
             controllerOut.AppendLine();
         }
 
-        private List<Type> LoadControllers(IEnumerable<string> assemblies)
+        private List<Type> LoadControllers(IEnumerable<Assembly> assemblies)
         {
             var controllers = new List<Type>();
-            foreach (var assemblyPath in assemblies)
+            foreach (var siteAssembly in assemblies)
             {
-                var siteAssembly = Assembly.LoadFrom(assemblyPath);
-
-                foreach (var type in siteAssembly.ExportedTypes.Where(t => t.GetTypeInfo().IsClass && t.Name.EndsWith("Controller")))
+                foreach (var type in siteAssembly.ExportedTypes.Where(t => t.Name != "TypedController" && t.GetTypeInfo().IsClass && t.Name.EndsWith("Controller")))
                 {
                     if (!apiAdapter.IsController(type))
                         continue;
