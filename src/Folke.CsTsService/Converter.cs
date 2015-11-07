@@ -26,13 +26,13 @@ namespace Folke.CsTsService
             viewOut = new StringBuilder();
         }
 
-        public void Write(IEnumerable<string> assemblies, string outputPath, string helperNamespace)
+        public void Write(IEnumerable<string> assemblies, string outputPath, string helperModule, string validatorModule)
         {
             var siteAssemblies = assemblies.Select(Assembly.LoadFrom).ToList();
-            Write(siteAssemblies, outputPath, helperNamespace);
+            Write(siteAssemblies, outputPath, helperModule, validatorModule);
         }
 
-        public void Write(IEnumerable<Assembly> assemblies, string outputPath, string helperNamespace)
+        public void Write(IEnumerable<Assembly> assemblies, string outputPath, string helperModule, string validatorModule)
         {
             var controllers = LoadControllers(assemblies);
 
@@ -55,7 +55,8 @@ namespace Folke.CsTsService
             var fileContent = new StringBuilder();
             fileContent.AppendLine("// Generated code, do not edit");
             fileContent.AppendLine("import ko = require('knockout');");
-            fileContent.AppendLine("import helper = require('" + helperNamespace + "/service-helpers');");
+            fileContent.AppendLine($"import helper = require('{helperModule}');");
+            fileContent.AppendLine($"import validator = require('{validatorModule}');");
             fileContent.AppendLine();
             fileContent.AppendLine("export var loading = helper.loading;");
             fileContent.AppendLine();
@@ -203,7 +204,7 @@ namespace Folke.CsTsService
                                 {
                                     toData.AppendLine("this." + camel + "() != null ? this." + camel +
                                                       "().map(v => v.toJs()) : null" + (last ? "" : ","));
-                                    hasChanged.Append("helper.hasArrayOfDtosChanged(this." + camel + ", this.originalData." +
+                                    hasChanged.Append("helper.hasArrayOfObjectsChanged(this." + camel + ", this.originalData." +
                                                       camel + ")");
                                 }
                             }
@@ -232,7 +233,7 @@ namespace Folke.CsTsService
                         if (needValidation)
                         {
                             validableObservables.Add(camel);
-                            view.Append("helper.ValidableObservable<" + typeName + ">");
+                            view.Append("validator.ValidableObservable<" + typeName + ">");
                         }
                         else
                             view.Append("KnockoutObservable<" + typeName + ">");
@@ -261,22 +262,22 @@ namespace Folke.CsTsService
                         {
                             if (needValidation)
                             {
-                                view.Append(" = helper.validableObservable<" + typeName + ">()");
+                                view.Append(" = validator.validableObservable<" + typeName + ">()");
                                 if (emailAddressAttribute != null)
-                                    view.Append(".addValidator(helper.isEmail)");
+                                    view.Append(".addValidator(validator.isEmail)");
                                 if (requiredAttribute != null)
-                                    view.Append(".addValidator(helper.isRequired)");
+                                    view.Append(".addValidator(validator.isRequired)");
                                 if (stringLengthAttribute != null)
-                                    view.Append(".addValidator(helper.hasMinLength(" +
+                                    view.Append(".addValidator(validator.hasMinLength(" +
                                                 stringLengthAttribute.MinimumLength + "))");
                                 if (minLengthAttribute != null)
-                                    view.Append($".addValidator(helper.hasMinLength({minLengthAttribute.Length}))");
+                                    view.Append($".addValidator(validator.hasMinLength({minLengthAttribute.Length}))");
 
                                 if (compareAttribute != null)
-                                    view.Append(".addValidator(helper.areSame(this." +
+                                    view.Append(".addValidator(validator.areSame(this." +
                                                 Camelize(compareAttribute.OtherProperty) + "))");
                                 if (rangeAttribute != null)
-                                    view.Append(".addValidator(helper.isInRange(" +
+                                    view.Append(".addValidator(validator.isInRange(" +
                                                 rangeAttribute.Minimum + ", " + rangeAttribute.Maximum + "))");
 
                                 view.AppendLine(";");
@@ -295,7 +296,7 @@ namespace Folke.CsTsService
                         }
                         else if (NeedNew(propertyType))
                         {
-                            hasChanged.AppendLine("helper.hasDtoChanged(this." + camel + "(), this.originalData." + camel + ")");
+                            hasChanged.AppendLine("helper.hasObjectChanged(this." + camel + "(), this.originalData." + camel + ")");
                             //valids.Add("(this." + camel + "() == null || this." + camel + "().valid())");
                         }
                         else
@@ -470,8 +471,8 @@ namespace Folke.CsTsService
                     if (apiAdapter.IsParameterFromBody(parameter))
                         bodyParameter = parameter;
                 }
-                controllerOut.Append("}, success?:(");
-
+                /*controllerOut.Append("}, success?:(");
+                
                 if (returnTypeName != null)
                 {
                     controllerOut.Append(Camelize(returnType.Name));
@@ -493,15 +494,16 @@ namespace Folke.CsTsService
                     if (isCollection)
                         controllerOut.Append("[]");
                 }
+                */
                 if (overridable)
                 {
                     over.Append(controllerOut.ToString().Substring(start));
-                    over.AppendLine(") => void, fail?:()=>void) => {");
+                    over.AppendLine("}) => {");
                     over.AppendLine("\t\treturn this." + name + "T(data => new " + returnTypeName +
-                                    "(data), parameters, success, fail);");
+                                    "(data), parameters);");
                     over.AppendLine("\t}");
                 }
-                controllerOut.AppendLine(") => void, fail?:()=>void) {");
+                controllerOut.AppendLine("}) {");
                 string httpMethod;
                 if (apiAdapter.IsPostAction(method))
                     httpMethod = "POST";
@@ -518,7 +520,13 @@ namespace Folke.CsTsService
                 {
                     controllerOut.Append(isCollection ? "List" : "Single");
                     if (overridable || returnType == typeof (DateTime))
+                    {
                         controllerOut.Append("T");
+                    }
+                    else
+                    {
+                        controllerOut.Append($"<{returnTypeName}>");
+                    }
                 }
                 else
                 {
@@ -556,7 +564,7 @@ namespace Folke.CsTsService
 
                 if (queryParameters != null && httpMethod == "GET")
                 {
-                    controllerOut.Append("{" + queryParameters + "}, ");
+                    controllerOut.Append("{" + queryParameters + "}");
                 }
                 else if (bodyParameter != null)
                 {
@@ -564,24 +572,24 @@ namespace Folke.CsTsService
                     if (CheckCollectionType(ref bodyType))
                     {
                         if (NeedNew(bodyType) && bodyType != typeof (DateTime))
-                            controllerOut.Append("JSON.stringify(parameters." + bodyParameter.Name + ".map(v => v.toJs())), ");
+                            controllerOut.Append("JSON.stringify(parameters." + bodyParameter.Name + ".map(v => v.toJs()))");
                         else
-                            controllerOut.Append("JSON.stringify(parameters." + bodyParameter.Name + "), ");
+                            controllerOut.Append("JSON.stringify(parameters." + bodyParameter.Name + ")");
                     }
                     else
                     {
                         if (NeedNew(bodyType) && bodyType != typeof (DateTime))
-                            controllerOut.Append("JSON.stringify(parameters." + bodyParameter.Name + ".toJs()), ");
+                            controllerOut.Append("JSON.stringify(parameters." + bodyParameter.Name + ".toJs())");
                         else
-                            controllerOut.Append("JSON.stringify(parameters." + bodyParameter.Name + "), ");
+                            controllerOut.Append("JSON.stringify(parameters." + bodyParameter.Name + ")");
                     }
                 }
                 else
                 {
-                    controllerOut.Append("null, ");
+                    controllerOut.Append("null");
                 }
 
-                controllerOut.AppendLine("success, fail);");
+                controllerOut.AppendLine(");");
                 controllerOut.AppendLine("\t}");
                 if (overridable)
                 {

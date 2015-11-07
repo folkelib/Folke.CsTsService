@@ -12,13 +12,15 @@ namespace Folke.CsTsService
                 Console.WriteLine("Usage:");
                 Console.WriteLine("   Folke.CsTsService (Assembly.dll)+ [-h] -o OutputPath [-m]");
                 Console.WriteLine("Options:");
-                Console.WriteLine("   -h helper namespace (default: helper)");
+                Console.WriteLine("   -h helper module (default: folke-ko-service-helpers)");
+                Console.WriteLine("   -v validator module (default : folke-ko-validator)");
                 Console.WriteLine("   -o typescript file output path");
                 Console.WriteLine("   -m use MvcAdapter");
                 return;
             }
             var assemblies = new List<string>();
-            string helperNamespace = ".";
+            string serviceHelpersModule = "folke-ko-service-helpers";
+            string validatorModule = "folke-ko-validator";
             string outputPath = "services.ts";
             IApiAdapter adapter = null;
 
@@ -30,13 +32,16 @@ namespace Folke.CsTsService
                     switch (arg)
                     {
                         case "-h":
-                            helperNamespace = args[++i];
+                            serviceHelpersModule = args[++i];
                             break;
                         case "-o":
                             outputPath = args[++i];
                             break;
                         case "-m":
                             adapter = new MvcAdapter();
+                            break;
+                        case "-v":
+                            validatorModule = args[++i];
                             break;
                         default:
                             throw new Exception("Unknown option " + arg);
@@ -49,7 +54,7 @@ namespace Folke.CsTsService
             }
 
             var converter = new Converter(adapter ?? new WaAdapter());
-            converter.Write(assemblies, outputPath, helperNamespace);
+            converter.Write(assemblies, outputPath, serviceHelpersModule, validatorModule);
         }
     }
 }
