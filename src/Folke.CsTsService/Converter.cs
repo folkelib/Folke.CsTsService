@@ -543,7 +543,7 @@ namespace Folke.CsTsService
                     match => "' + parameters." + match.Groups[1].Value + " + '");
                 controllerOut.Append(routeString);
                 controllerOut.Append("'");
-                if (queryParameters != null && httpMethod != "GET")
+                if (queryParameters != null)
                 {
                     controllerOut.Append(" + helper.getQueryString({");
                     controllerOut.Append(queryParameters);
@@ -562,11 +562,7 @@ namespace Folke.CsTsService
                     }
                 }
 
-                if (queryParameters != null && httpMethod == "GET")
-                {
-                    controllerOut.Append("{" + queryParameters + "}");
-                }
-                else if (bodyParameter != null)
+                if (bodyParameter != null)
                 {
                     var bodyType = bodyParameter.ParameterType;
                     if (CheckCollectionType(ref bodyType))
