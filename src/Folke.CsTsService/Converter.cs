@@ -25,13 +25,7 @@ namespace Folke.CsTsService
             controllerOut = new StringBuilder();
             viewOut = new StringBuilder();
         }
-
-        public void Write(IEnumerable<string> assemblies, string outputPath, string helperModule, string validatorModule)
-        {
-            var siteAssemblies = assemblies.Select(Assembly.LoadFrom).ToList();
-            Write(siteAssemblies, outputPath, helperModule, validatorModule);
-        }
-
+        
         public void Write(IEnumerable<Assembly> assemblies, string outputPath, string helperModule, string validatorModule)
         {
             var controllers = LoadControllers(assemblies);
@@ -119,10 +113,10 @@ namespace Folke.CsTsService
 
             var validableObservables = new List<string>();
             var validableReferenceObservables = new List<string>();
-
-            foreach (var member in type.GetProperties())
+            var declaredProperties = type.GetTypeInfo().DeclaredProperties.ToList();
+            foreach (var member in declaredProperties)
             {
-                bool last = member == type.GetProperties().Last();
+                bool last = member.Equals(declaredProperties.Last());
 
                 // Add the constructor
                 var camel = Camelize(member.Name);
@@ -176,10 +170,13 @@ namespace Folke.CsTsService
                     }
                     else if (propertyType.GetTypeInfo().IsGenericType)
                     {
-                        var collection = typeof (IList<>).MakeGenericType(elementType);
+                        var collectionType = typeof (IList<>).MakeGenericType(elementType);
+                        var readonlyCollectionType = typeof (IReadOnlyList<>).MakeGenericType(elementType);
+                        var collectionTypeInfo = collectionType.GetTypeInfo();
+                        var propertTypeInfo = propertyType.GetTypeInfo();
                         // A collection of values
-                        if (propertyType.IsAssignableFrom(collection) ||
-                            propertyType.IsAssignableFrom(typeof (IReadOnlyList<>).MakeGenericType(elementType)))
+                        if (propertTypeInfo.IsAssignableFrom(collectionTypeInfo) ||
+                            propertTypeInfo.IsAssignableFrom(readonlyCollectionType.GetTypeInfo()))
                         {
                             RegisterType(elementType);
                             view.Append("KnockoutObservableArray<" + typeName + ">");
@@ -371,12 +368,12 @@ namespace Folke.CsTsService
 
         private bool NeedValidation(Type type)
         {
-            foreach (var property in type.GetProperties())
+            foreach (var property in type.GetTypeInfo().DeclaredProperties)
             {
                 var attributes = property.CustomAttributes;
                 foreach (var customAttributeData in attributes)
                 {
-                    if (customAttributeData.AttributeType.IsSubclassOf(typeof (ValidationAttribute)))
+                    if (customAttributeData.AttributeType.GetTypeInfo().IsSubclassOf(typeof (ValidationAttribute)))
                     {
                         return true;
                     }
@@ -392,7 +389,7 @@ namespace Folke.CsTsService
             routePrefix = routePrefix.Replace("[controller]", type.Name.Replace("Controller", ""));
             controllerOut.AppendLine("export class " + type.Name + " {");
             bool firstController = true;
-            foreach (var method in type.GetMethods().Where(m => m.IsPublic))
+            foreach (var method in type.GetTypeInfo().DeclaredMethods.Where(m => m.IsPublic))
             {
                 if (method.IsSpecialName) continue;
 
@@ -636,10 +633,10 @@ namespace Folke.CsTsService
             if (returnType.GetTypeInfo().IsGenericType)
             {
                 var collectionType = returnType.GetGenericTypeDefinition();
-                if (collectionType.GetInterfaces().Any(x => x.Name == "IEnumerable"))
+                if (collectionType.GetTypeInfo().ImplementedInterfaces.Any(x => x.Name == "IEnumerable"))
                 {
                     isCollection = true;
-                    returnType = returnType.GetGenericArguments()[0];
+                    returnType = returnType.GenericTypeArguments[0];
                 }
             }
             else if (returnType.IsArray)

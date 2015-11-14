@@ -9,19 +9,22 @@
   "dependencies": {
   },
 
-  "commands": {
-    "Folke.CsTsService": "Folke.CsTsService"
-  },
-
   "frameworks": {
     "net45": {
       "frameworkAssemblies": {"System.ComponentModel.DataAnnotations":"4.0.0.0"}
     },
     "dnx451": {
-      "frameworkAssemblies": { "System.ComponentModel.DataAnnotations": "4.0.0.0" },
+      "frameworkAssemblies": { "System.ComponentModel.DataAnnotations": "4.0.0.0" }
+    },
+    "dnxcore50": {
       "dependencies": {
-        "Microsoft.AspNet.Mvc": "6.0.0-beta8",
-        "Folke.Mvc.Extensions":  "1.0.0-beta-*"
+        "System.Collections": "4.0.11-beta-*",
+        "System.Linq": "4.0.1-beta-*",
+        "System.Runtime": "4.0.21-beta-*",
+        "System.Threading": "4.0.11-beta-*",
+        "System.ComponentModel.Annotations": "4.0.10",
+        "System.IO": "4.0.11-beta-*",
+        "System.IO.FileSystem": "4.0.1-beta-*"
       }
     }
   }

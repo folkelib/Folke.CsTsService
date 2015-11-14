@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 
@@ -52,12 +51,12 @@ namespace Folke.CsTsService
             var returnType = methodInfo.ReturnType;
             if (returnType.GetTypeInfo().IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
             {
-                returnType = returnType.GetGenericArguments()[0];
+                returnType = returnType.GenericTypeArguments[0];
             }
 
             if (returnType.GetTypeInfo().IsGenericType && returnType.GetGenericTypeDefinition().Name.StartsWith("IHttpActionResult"))
             {
-                returnType = returnType.GetGenericArguments()[0];
+                returnType = returnType.GenericTypeArguments[0];
             }
 
             if (returnType == typeof(void) || returnType.Name == "IHttpActionResult" || returnType.Name == "IActionResult" || returnType == typeof(Task))

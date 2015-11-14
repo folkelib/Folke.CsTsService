@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Threading.Tasks;
 
 namespace Folke.CsTsService
 {
@@ -27,6 +26,11 @@ namespace Folke.CsTsService
         public static bool HasAttribute(this MethodInfo methodInfo, string attributeName)
         {
             return methodInfo.CustomAttributes.Any(x => x.AttributeType.Name == attributeName);
+        }
+
+        public static PropertyInfo GetProperty(this Type type, string propertyName)
+        {
+            return type.GetTypeInfo().DeclaredProperties.FirstOrDefault(x => x.Name == propertyName);
         }
 
         public static T GetAttributeProperty<T>(this Type type, string attributeName, string propertyName)

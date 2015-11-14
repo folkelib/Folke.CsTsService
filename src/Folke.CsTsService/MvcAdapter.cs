@@ -47,7 +47,7 @@ namespace Folke.CsTsService
             var returnType = methodInfo.ReturnType;
             if (returnType.GetTypeInfo().IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
             {
-                returnType = returnType.GetGenericArguments()[0];
+                returnType = returnType.GenericTypeArguments[0];
             }
 
             if (returnType == typeof(void) || returnType.HasBaseType("IActionResult") || returnType == typeof(Task))
