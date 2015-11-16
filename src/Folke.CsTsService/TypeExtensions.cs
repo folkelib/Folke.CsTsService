@@ -30,7 +30,35 @@ namespace Folke.CsTsService
 
         public static PropertyInfo GetProperty(this Type type, string propertyName)
         {
-            return type.GetTypeInfo().DeclaredProperties.FirstOrDefault(x => x.Name == propertyName);
+            return type.GetProperties().FirstOrDefault(x => x.Name == propertyName);
+        }
+
+        public static IEnumerable<PropertyInfo> GetProperties(this TypeInfo type)
+        {
+            if (type.BaseType != null)
+            {
+                return type.DeclaredProperties.Union(type.BaseType.GetProperties());
+            }
+            return type.DeclaredProperties;
+        }
+
+        public static IEnumerable<MethodInfo> GetMethods(this TypeInfo type)
+        {
+            if (type.BaseType != null)
+            {
+                return type.DeclaredMethods.Union(type.BaseType.GetMethods());
+            }
+            return type.DeclaredMethods;
+        }
+
+        public static IEnumerable<MethodInfo> GetMethods(this Type type)
+        {
+            return type.GetTypeInfo().GetMethods();
+        }
+
+        public static IEnumerable<PropertyInfo> GetProperties(this Type type)
+        {
+            return type.GetTypeInfo().GetProperties();
         }
 
         public static T GetAttributeProperty<T>(this Type type, string attributeName, string propertyName)
@@ -56,6 +84,5 @@ namespace Folke.CsTsService
                 yield return (T)attribute.GetType().GetProperty(propertyName).GetValue(attribute);
             }
         }
-
     }
 }

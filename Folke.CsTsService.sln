@@ -7,6 +7,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{48207A16-C9D
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{CDAD9118-1AA0-4A41-B6F7-CBA19AD81798}"
 	ProjectSection(SolutionItems) = preProject
+		build.ps1 = build.ps1
 		global.json = global.json
 		NuGet.Config = NuGet.Config
 	EndProjectSection

@@ -113,7 +113,7 @@ namespace Folke.CsTsService
 
             var validableObservables = new List<string>();
             var validableReferenceObservables = new List<string>();
-            var declaredProperties = type.GetTypeInfo().DeclaredProperties.ToList();
+            var declaredProperties = type.GetProperties().ToList();
             foreach (var member in declaredProperties)
             {
                 bool last = member.Equals(declaredProperties.Last());
@@ -368,7 +368,7 @@ namespace Folke.CsTsService
 
         private bool NeedValidation(Type type)
         {
-            foreach (var property in type.GetTypeInfo().DeclaredProperties)
+            foreach (var property in type.GetProperties())
             {
                 var attributes = property.CustomAttributes;
                 foreach (var customAttributeData in attributes)
@@ -389,7 +389,7 @@ namespace Folke.CsTsService
             routePrefix = routePrefix.Replace("[controller]", type.Name.Replace("Controller", ""));
             controllerOut.AppendLine("export class " + type.Name + " {");
             bool firstController = true;
-            foreach (var method in type.GetTypeInfo().DeclaredMethods.Where(m => m.IsPublic))
+            foreach (var method in type.GetMethods().Where(m => m.IsPublic))
             {
                 if (method.IsSpecialName) continue;
 
