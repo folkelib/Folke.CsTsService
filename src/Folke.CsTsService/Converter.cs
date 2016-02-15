@@ -221,11 +221,12 @@ namespace Folke.CsTsService
                         var stringLengthAttribute = member.GetCustomAttribute<StringLengthAttribute>();
                         var compareAttribute = member.GetCustomAttribute<CompareAttribute>();
                         var minLengthAttribute = member.GetCustomAttribute<MinLengthAttribute>();
+                        var maxLengthAttribute = member.GetCustomAttribute<MaxLengthAttribute>();
                         var rangeAttribute = member.GetCustomAttribute<RangeAttribute>();
                         var needValidation = requiredAttribute != null || emailAddressAttribute != null ||
                                              stringLengthAttribute != null || compareAttribute != null ||
                                              minLengthAttribute != null
-                                             || rangeAttribute != null;
+                                             || rangeAttribute != null || maxLengthAttribute != null;
 
                         if (needValidation)
                         {
@@ -269,6 +270,8 @@ namespace Folke.CsTsService
                                                 stringLengthAttribute.MinimumLength + "))");
                                 if (minLengthAttribute != null)
                                     view.Append($".addValidator(validator.hasMinLength({minLengthAttribute.Length}))");
+                                if (maxLengthAttribute != null)
+                                    view.Append($".addValidator(validator.hasMaxLength({maxLengthAttribute.Length}))");
 
                                 if (compareAttribute != null)
                                     view.Append(".addValidator(validator.areSame(this." +
@@ -336,20 +339,17 @@ namespace Folke.CsTsService
             {
                 view.AppendLine();
                 view.AppendLine("\tpublic isValid = ko.computed(() => {");
-                view.Append("\t\treturn ");
-                bool first = true;
+                view.Append("\t\treturn !loading() ");
                 foreach (var validableObservable in validableObservables)
                 {
-                    if (first) first = false;
-                    else view.Append(" && ");
+                    view.Append(" && ");
                     view.Append("!this." + validableObservable + ".validating() && ");
                     view.Append("this." + validableObservable + ".errorMessage() == null");
                 }
 
                 foreach (var validableReferenceObservable in validableReferenceObservables)
                 {
-                    if (first) first = false;
-                    else view.Append(" && ");
+                    view.Append(" && ");
                     view.Append("(!this." + validableReferenceObservable + "() || this." + validableReferenceObservable + "().isValid())");
                 }
                 view.AppendLine(";");
