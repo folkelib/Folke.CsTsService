@@ -170,13 +170,13 @@ namespace Folke.CsTsService
                     }
                     else if (propertyType.GetTypeInfo().IsGenericType)
                     {
-                        var collectionType = typeof (IList<>).MakeGenericType(elementType);
-                        var readonlyCollectionType = typeof (IReadOnlyList<>).MakeGenericType(elementType);
+                        var collectionType = typeof (IEnumerable<>).MakeGenericType(elementType);
+                        var readonlyCollectionType = typeof (IReadOnlyCollection<>).MakeGenericType(elementType);
                         var collectionTypeInfo = collectionType.GetTypeInfo();
                         var propertTypeInfo = propertyType.GetTypeInfo();
                         // A collection of values
-                        if (propertTypeInfo.IsAssignableFrom(collectionTypeInfo) ||
-                            propertTypeInfo.IsAssignableFrom(readonlyCollectionType.GetTypeInfo()))
+                        if (collectionTypeInfo.IsAssignableFrom(propertTypeInfo) ||
+                            readonlyCollectionType.GetTypeInfo().IsAssignableFrom(propertTypeInfo))
                         {
                             RegisterType(elementType);
                             view.Append("KnockoutObservableArray<" + typeName + ">");
@@ -194,14 +194,16 @@ namespace Folke.CsTsService
                                 if (typeName == "Date")
                                 {
                                     toData.AppendLine("this." + camel + "()" + (last ? "" : ","));
-                                    hasChanged.Append("helper.hasArrayChanged(this." + camel + ", this.originalData." + camel +
+                                    hasChanged.Append("helper.hasArrayChanged(this." + camel + ", this.originalData." +
+                                                      camel +
                                                       ")");
                                 }
                                 else
                                 {
                                     toData.AppendLine("this." + camel + "() != null ? this." + camel +
                                                       "().map(v => v.toJs()) : null" + (last ? "" : ","));
-                                    hasChanged.Append("helper.hasArrayOfObjectsChanged(this." + camel + ", this.originalData." +
+                                    hasChanged.Append("helper.hasArrayOfObjectsChanged(this." + camel +
+                                                      ", this.originalData." +
                                                       camel + ")");
                                 }
                             }
@@ -209,9 +211,14 @@ namespace Folke.CsTsService
                             {
                                 load.Append("value");
                                 toData.AppendLine("this." + camel + "()" + (last ? "" : ","));
-                                hasChanged.Append("helper.hasArrayChanged(this." + camel + ", this.originalData." + camel + ")");
+                                hasChanged.Append("helper.hasArrayChanged(this." + camel + ", this.originalData." +
+                                                  camel + ")");
                             }
                             load.AppendLine(") : null);");
+                        }
+                        else
+                        {
+                            load.Append("");
                         }
                     }
                     else
@@ -571,7 +578,7 @@ namespace Folke.CsTsService
                     }
                     else
                     {
-                        if (NeedNew(bodyType) && bodyType != typeof (DateTime))
+                        if (NeedNew(bodyType) && apiAdapter.IsObservableObject(bodyType) && bodyType != typeof (DateTime))
                             controllerOut.Append("JSON.stringify(parameters." + bodyParameter.Name + ".toJs())");
                         else
                             controllerOut.Append("JSON.stringify(parameters." + bodyParameter.Name + ")");
