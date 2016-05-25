@@ -4,3 +4,4 @@
 src/Folke.CsTsService/bin
 *.user
 *.lock.json
+obj

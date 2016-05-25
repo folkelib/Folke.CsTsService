@@ -50,7 +50,8 @@ namespace Folke.CsTsService
                 returnType = returnType.GenericTypeArguments[0];
             }
 
-            if (returnType == typeof(void) || returnType.HasBaseType("IActionResult") || returnType == typeof(Task))
+            if (returnType == typeof(void) || returnType.HasBaseType("IActionResult") || returnType == typeof(Task)
+                || returnType.HasBaseType("ActionResult"))
                 returnType = null;
             return returnType;
         }

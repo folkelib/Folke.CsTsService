@@ -25,11 +25,16 @@ namespace Folke.CsTsService
             controllerOut = new StringBuilder();
             viewOut = new StringBuilder();
         }
-        
-        public void Write(IEnumerable<Assembly> assemblies, string outputPath, string helperModule, string validatorModule)
+
+        public void Write(IEnumerable<Assembly> assemblies, string outputPath, string helperModule,
+            string validatorModule)
         {
             var controllers = LoadControllers(assemblies);
+            Write(controllers, outputPath, helperModule, validatorModule);
+        }
 
+        public void Write(IEnumerable<Type> controllers, string outputPath, string helperModule, string validatorModule)
+        {
             foreach (var type in controllers)
             {
                 WriteController(type);
@@ -83,11 +88,11 @@ namespace Folke.CsTsService
             views[type] = true;
             
             // On construit le constructeur au fur et à mesure
-            var constructor = new StringBuilder("constructor(data?:" + type.Name + "Data) {" + Environment.NewLine);
+            var constructor = new StringBuilder("constructor(data?:" + CleanName(type) + "Data) {" + Environment.NewLine);
             constructor.AppendLine("\t\tthis.originalData = data = data || {};");
             constructor.AppendLine("\t\tthis.load(data);");
 
-            var load = new StringBuilder("public load(data:" + type.Name + "Data) {" + Environment.NewLine);
+            var load = new StringBuilder("public load(data:" + CleanName(type) + "Data) {" + Environment.NewLine);
 
 
             // On construit également la méthode qui convertit en javascript
@@ -99,17 +104,18 @@ namespace Folke.CsTsService
 
             var view = new StringBuilder();
             // Hop, on crée la classe dans output
-            view.AppendLine("export class " + type.Name + " {");
-            view.AppendLine("\toriginalData: " + type.Name + "Data;");
+            view.AppendLine("export class " + CleanName(type) + " {");
+            view.AppendLine("\toriginalData: " + CleanName(type) + "Data;");
             view.AppendLine("\tchanged: KnockoutComputed<boolean>;");
             /*view.AppendLine("\tvalid: KnockoutComputed<boolean>");
                 view.AppendLine("\tcanSave: KnockoutComputed<boolean>");*/
             view.AppendLine();
             //var valids = new List<string>();
             bool firstProperty = true;
+            bool firstHasChanged = true;
 
             var viewData = new StringBuilder();
-            viewData.AppendLine("export interface " + type.Name + "Data {");
+            viewData.AppendLine("export interface " + CleanName(type) + "Data {");
 
             var validableObservables = new List<string>();
             var validableReferenceObservables = new List<string>();
@@ -153,11 +159,43 @@ namespace Folke.CsTsService
                 }
                 else
                 {
-                    if (!firstProperty && member.Name != "_destroy")
+                    if (!firstHasChanged && member.Name != "_destroy")
                         hasChanged.Append("\t\t\t|| ");
 
-                    Type elementType = propertyType.GetTypeInfo().IsGenericType ? propertyType.GenericTypeArguments[0] : propertyType;
+                    Type elementType = propertyType;
 
+                    bool isCollection = false;
+                    bool isDictionary = false;
+                    var propertTypeInfo = propertyType.GetTypeInfo();
+
+                    if (propertTypeInfo.IsGenericType)
+                    {
+                        if (propertyType.GenericTypeArguments.Length > 1)
+                        {
+                            Type dictionaryType = typeof (IDictionary<,>).MakeGenericType(typeof (string),
+                                propertyType.GenericTypeArguments[1]);
+                            var dictionaryTypeInfo = dictionaryType.GetTypeInfo();
+                            if (dictionaryTypeInfo.IsAssignableFrom(propertTypeInfo))
+                            {
+                                isDictionary = true;
+                                elementType = propertyType.GenericTypeArguments[1];
+                            }
+                        }
+
+                        if (!isDictionary)
+                        {
+                            var collectionType = typeof(IEnumerable<>).MakeGenericType(propertyType.GenericTypeArguments[0]);
+                            var readonlyCollectionType = typeof(IReadOnlyCollection<>).MakeGenericType(propertyType.GenericTypeArguments[0]);
+                            var collectionTypeInfo = collectionType.GetTypeInfo();
+                            if (collectionTypeInfo.IsAssignableFrom(propertTypeInfo) ||
+                                readonlyCollectionType.GetTypeInfo().IsAssignableFrom(propertTypeInfo))
+                            {
+                                isCollection = true;
+                                elementType = propertyType.GenericTypeArguments[0];
+                            }
+                        }
+                    }
+                    
                     var typeName = GetTypeName(elementType, member);
 
                     if (member.Name == "_destroy")
@@ -168,58 +206,53 @@ namespace Folke.CsTsService
                         toData.AppendLine("this." + camel + (last ? "" : ","));
                         viewData.AppendLine(typeName + ";");
                     }
-                    else if (propertyType.GetTypeInfo().IsGenericType)
+                    else if (isCollection)
                     {
-                        var collectionType = typeof (IEnumerable<>).MakeGenericType(elementType);
-                        var readonlyCollectionType = typeof (IReadOnlyCollection<>).MakeGenericType(elementType);
-                        var collectionTypeInfo = collectionType.GetTypeInfo();
-                        var propertTypeInfo = propertyType.GetTypeInfo();
-                        // A collection of values
-                        if (collectionTypeInfo.IsAssignableFrom(propertTypeInfo) ||
-                            readonlyCollectionType.GetTypeInfo().IsAssignableFrom(propertTypeInfo))
+                        RegisterType(elementType);
+                        view.Append("KnockoutObservableArray<" + typeName + ">");
+                        view.AppendLine(" = ko.observableArray<" + typeName + ">();");
+
+                        if (typeName == "Date" || typeName == "string" || elementType.GetTypeInfo().IsEnum)
+                            viewData.AppendLine(typeName + "[];");
+                        else
+                            viewData.AppendLine(typeName + "Data[];");
+
+                        load.Append("(data['" + camel + "'] ? (<any[]>data." + camel + ").map(value => ");
+                        if (NeedNew(elementType))
                         {
-                            RegisterType(elementType);
-                            view.Append("KnockoutObservableArray<" + typeName + ">");
-                            view.AppendLine(" = ko.observableArray<" + typeName + ">();");
-
-                            if (typeName == "Date" || typeName == "string" || elementType.GetTypeInfo().IsEnum)
-                                viewData.AppendLine(typeName + "[];");
-                            else
-                                viewData.AppendLine(typeName + "Data[];");
-
-                            load.Append("(data['" + camel + "'] ? (<any[]>data." + camel + ").map(value => ");
-                            if (NeedNew(elementType))
+                            load.Append("new " + typeName + "(value)");
+                            if (typeName == "Date")
                             {
-                                load.Append("new " + typeName + "(value)");
-                                if (typeName == "Date")
-                                {
-                                    toData.AppendLine("this." + camel + "()" + (last ? "" : ","));
-                                    hasChanged.Append("helper.hasArrayChanged(this." + camel + ", this.originalData." +
-                                                      camel +
-                                                      ")");
-                                }
-                                else
-                                {
-                                    toData.AppendLine("this." + camel + "() != null ? this." + camel +
-                                                      "().map(v => v.toJs()) : null" + (last ? "" : ","));
-                                    hasChanged.Append("helper.hasArrayOfObjectsChanged(this." + camel +
-                                                      ", this.originalData." +
-                                                      camel + ")");
-                                }
-                            }
-                            else
-                            {
-                                load.Append("value");
                                 toData.AppendLine("this." + camel + "()" + (last ? "" : ","));
                                 hasChanged.Append("helper.hasArrayChanged(this." + camel + ", this.originalData." +
-                                                  camel + ")");
+                                                    camel +
+                                                    ")");
                             }
-                            load.AppendLine(") : null);");
+                            else
+                            {
+                                toData.AppendLine("this." + camel + "() != null ? this." + camel +
+                                                    "().map(v => v.toJs()) : null" + (last ? "" : ","));
+                                hasChanged.Append("helper.hasArrayOfObjectsChanged(this." + camel +
+                                                    ", this.originalData." +
+                                                    camel + ")");
+                            }
                         }
                         else
                         {
-                            load.Append("");
+                            load.Append("value");
+                            toData.AppendLine("this." + camel + "()" + (last ? "" : ","));
+                            hasChanged.Append("helper.hasArrayChanged(this." + camel + ", this.originalData." +
+                                                camel + ")");
                         }
+                        load.AppendLine(") : null);");
+                        firstHasChanged = false;
+                    }
+                    else if (isDictionary)
+                    {
+                        view.AppendLine($"{{[key:string]:{typeName}}};");
+                        load.AppendLine($" = data.{camel};");
+                        toData.AppendLine($"this.{camel}" + (last ? "" : ","));
+                        viewData.AppendLine($"{{[key:string]:{typeName}}};");
                     }
                     else
                     {
@@ -312,7 +345,9 @@ namespace Folke.CsTsService
                             //if (!nullable)
                             //    valids.Add("this." + camel + "() !== null");
                         }
+                        firstHasChanged = false;
                     }
+
                     firstProperty = false;
                 }
             }
@@ -393,8 +428,8 @@ namespace Folke.CsTsService
         {
             var routePrefix = apiAdapter.GetRoutePrefixName(type);
             if (routePrefix == null) return;
-            routePrefix = routePrefix.Replace("[controller]", type.Name.Replace("Controller", ""));
-            controllerOut.AppendLine("export class " + type.Name + " {");
+            routePrefix = routePrefix.Replace("[controller]", CleanName(type).Replace("Controller", ""));
+            controllerOut.AppendLine("export class " + CleanName(type) + " {");
             bool firstController = true;
             foreach (var method in type.GetMethods().Where(m => m.IsPublic))
             {
@@ -598,7 +633,7 @@ namespace Folke.CsTsService
                 }
             }
             controllerOut.AppendLine("}" + Environment.NewLine);
-            controllerOut.AppendLine("export var " + Camelize(type.Name.Replace("Controller", "")) + " = new " + type.Name + "();");
+            controllerOut.AppendLine("export var " + Camelize(CleanName(type).Replace("Controller", "")) + " = new " + CleanName(type) + "();");
             controllerOut.AppendLine();
         }
 
@@ -664,6 +699,8 @@ namespace Folke.CsTsService
             return !(type == typeof(int) || type == typeof(long) || type == typeof(float) || type == typeof(double) || type == typeof(string) || type == typeof(bool) || type == typeof(decimal) || type == typeof(TimeSpan) || type == typeof(object)) && !type.GetTypeInfo().IsEnum;
         }
 
+        private static readonly Regex cleaName = new Regex(@"`\d+");
+
         private string GetTypeName(Type type, PropertyInfo propertyInfo)
         {
             if (type == typeof(int) || type == typeof(float) || type == typeof(double) || type == typeof(long) || type == typeof(decimal))
@@ -693,8 +730,13 @@ namespace Folke.CsTsService
             }
 
             if (!apiAdapter.IsObservableObject(type))
-                return type.Name + "Data";
-            return type.Name;
+                return CleanName(type) + "Data";
+            return CleanName(type);
+        }
+
+        private static string CleanName(Type type)
+        {
+            return cleaName.Replace(type.Name, "");
         }
     }
 }
