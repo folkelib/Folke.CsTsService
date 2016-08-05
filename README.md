@@ -3,6 +3,8 @@ Folke.CsTsService
 
 This is a library to create a Typescript client from a .NET MVC6 Controllers.
 
+[![Build status](https://ci.appveyor.com/api/projects/status/w2jisrm1r8v3g55u?svg=true)](https://ci.appveyor.com/project/acastaner/folke-cstsservice)
+
 ### Usage
 
 The easiest method to use this library is to add it to your website project. You then
