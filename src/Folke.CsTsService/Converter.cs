@@ -1,742 +1,537 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
-using System.IO;
-using System.Linq;
 using System.Reflection;
-using System.Text;
+using Folke.CsTsService.Nodes;
+using System.Linq;
+using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using System.Xml.Linq;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Folke.Mvc.Extensions;
+using Newtonsoft.Json;
+using Microsoft.AspNetCore.Mvc.ApplicationParts;
+using Microsoft.AspNetCore.Mvc.Controllers;
 
 namespace Folke.CsTsService
 {
     public class Converter
     {
-        private readonly HashSet<Type> enums;
-        private readonly Dictionary<Type, bool> views;
-        private readonly StringBuilder controllerOut;
-        private readonly StringBuilder viewOut;
-        private readonly IApiAdapter apiAdapter;
+        private readonly Documentation documentation;
+        private static readonly Regex NameCleaner = new Regex(@"`\d+");
 
-        public Converter(IApiAdapter apiAdapter)
+        public Converter(Documentation documentation = null)
         {
-            this.apiAdapter = apiAdapter;
-            enums = new HashSet<Type>();
-            views = new Dictionary<Type, bool>();
-            controllerOut = new StringBuilder();
-            viewOut = new StringBuilder();
+            this.documentation = documentation ?? new Documentation();
         }
 
-        public void Write(IEnumerable<Assembly> assemblies, string outputPath, string helperModule,
-            string validatorModule)
+        public AssemblyNode ReadApplicationPart(ApplicationPartManager applicationPartManager)
         {
-            var controllers = LoadControllers(assemblies);
-            Write(controllers, outputPath, helperModule, validatorModule);
+            var feature = new ControllerFeature();
+            applicationPartManager.PopulateFeature(feature);
+            var converter = new Converter();
+            var controllerTypes = feature.Controllers.Select(c => c.AsType());
+            return ReadControllers(controllerTypes);
         }
 
-        public void Write(IEnumerable<Type> controllers, string outputPath, string helperModule, string validatorModule)
+        public AssemblyNode ReadControllers(IEnumerable<Type> controllers)
         {
-            foreach (var type in controllers)
+            var assemblyNode = new AssemblyNode();
+            foreach (var controllerType in controllers)
             {
-                WriteController(type);
+                var controller = ReadController(controllerType, assemblyNode);
+                if (controller.Actions.Any())
+                {
+                    assemblyNode.Controllers.Add(controller);
+                }
             }
-
-            // Pour chacun des Dtos
-            while (views.Any(x => !x.Value))
-            {
-                WriteLastView();
-            }
-
-            foreach (var type in enums)
-            {
-                WriteEnum(type);
-            }
-
-            var fileContent = new StringBuilder();
-            fileContent.AppendLine("// Generated code, do not edit");
-            fileContent.AppendLine("import ko = require('knockout');");
-            fileContent.AppendLine($"import helper = require('{helperModule}');");
-            fileContent.AppendLine($"import validator = require('{validatorModule}');");
-            fileContent.AppendLine();
-            fileContent.AppendLine("export var loading = helper.loading;");
-            fileContent.AppendLine();
-            fileContent.Append(viewOut);
-            fileContent.AppendLine();
-            fileContent.Append(controllerOut);
-
-            File.WriteAllText(outputPath, fileContent.ToString());
+            return assemblyNode;
         }
 
-        private void WriteEnum(Type type)
+        public ActionsGroupNode ReadController(Type type, AssemblyNode assemblyNode)
         {
-            viewOut.AppendLine("export enum " + type.Name + " {");
-            bool first = true;
-            foreach (var value in Enum.GetNames(type))
+            var controller = new ActionsGroupNode
             {
-                if (!first)
-                    viewOut.AppendLine(",");
-                first = false;
-                viewOut.Append("\t" + value);
+                Assembly = assemblyNode
+            };
+
+            string routePrefix = null;
+            var routePrefixAttribute = type.GetTypeInfo().GetCustomAttribute<RouteAttribute>(false) ?? type.GetTypeInfo().GetCustomAttribute<RouteAttribute>();
+            if (routePrefixAttribute != null)
+            {
+                routePrefix = routePrefixAttribute.Template;
             }
-            viewOut.AppendLine();
-            viewOut.AppendLine("}");
-            viewOut.AppendLine();
+
+            controller.Name = type.Name.Replace("Controller", string.Empty);
+            controller.Name = NameCleaner.Replace(controller.Name, string.Empty);
+            controller.Documentation = documentation.GetDocumentation(type);
+
+            foreach (var methodInfo in type.GetMethods().Where(x => x.IsPublic))
+            {
+                if (methodInfo.GetCustomAttribute<NonActionAttribute>() != null) continue;
+                if (methodInfo.IsSpecialName) continue;
+
+                var action = ReadAction(routePrefix, methodInfo, controller);
+                if (action != null)
+                {
+                    controller.Actions.Add(action);
+                }
+            }
+            return controller;
         }
 
-        private void WriteLastView()
+        public ActionNode ReadAction(string routePrefix, MethodInfo methodInfo, ActionsGroupNode actionsGroup)
         {
-            var type = views.First(x => !x.Value).Key;
-            views[type] = true;
+            var actionNode = new ActionNode {Group = actionsGroup};
+
+            string route = null;
+
+            if (methodInfo.GetCustomAttribute<HttpGetAttribute>() != null)
+            {
+                actionNode.Type = ActionMethod.Get;
+                route = methodInfo.GetCustomAttribute<HttpGetAttribute>().Template;
+            }
+            else if (methodInfo.GetCustomAttribute<HttpPostAttribute>() != null)
+            {
+                actionNode.Type = ActionMethod.Post;
+                route = methodInfo.GetCustomAttribute<HttpPostAttribute>().Template;
+            }
+            else if (methodInfo.GetCustomAttribute<HttpPutAttribute>() != null)
+            {
+                actionNode.Type = ActionMethod.Put;
+                route = methodInfo.GetCustomAttribute<HttpPutAttribute>().Template;
+            }
+            else if (methodInfo.GetCustomAttribute<HttpDeleteAttribute>() != null)
+            {
+                actionNode.Type = ActionMethod.Delete;
+                route = methodInfo.GetCustomAttribute<HttpDeleteAttribute>().Template;
+            }
+
+            var routeAttribute = methodInfo.GetCustomAttribute<RouteAttribute>();
+            if (routeAttribute != null)
+            {
+                route = routeAttribute.Template;
+            }
+
+            if (route == null)
+            {
+                route = methodInfo.Name;
+            }
+
+            if (actionNode.Type == ActionMethod.Unknown && routeAttribute != null)
+            {
+                if (methodInfo.Name.StartsWith("Get", StringComparison.OrdinalIgnoreCase)) actionNode.Type = ActionMethod.Get;
+                else if (methodInfo.Name.StartsWith("Post", StringComparison.OrdinalIgnoreCase)) actionNode.Type = ActionMethod.Post;
+                else if (methodInfo.Name.StartsWith("Put", StringComparison.OrdinalIgnoreCase)) actionNode.Type = ActionMethod.Put;
+                else if (methodInfo.Name.StartsWith("Delete", StringComparison.OrdinalIgnoreCase)) actionNode.Type = ActionMethod.Delete;
+            }
+
+            // Remove type info from route
+            route = Regex.Replace(route, @"{(\w+\??)(?::\w+)?}", "{$1}");
+            if (route.StartsWith("~"))
+            {
+                route = Regex.Replace(route, @"^~/?", string.Empty);
+            }
+            else
+            {
+                route = $"{routePrefix}/{route}";
+            }
+
+            actionNode.Name = methodInfo.Name;
+            actionNode.Route = route;
+
+            if (actionNode.Type == ActionMethod.Unknown)
+            {
+                return null;
+            }
+
+            var versionMatch = Regex.Match(route, @"api/v([\d\.])+");
+            actionNode.Version = versionMatch.Success ? versionMatch.Groups[1].Value : null;
+
+            var authorizeAttribute = methodInfo.GetCustomAttribute<AuthorizeAttribute>();
+            if (authorizeAttribute != null)
+            {
+                actionNode.Authorization = authorizeAttribute.Policy ?? authorizeAttribute.Roles;
+            }
             
-            // On construit le constructeur au fur et à mesure
-            var constructor = new StringBuilder("constructor(data?:" + CleanName(type) + "Data) {" + Environment.NewLine);
-            constructor.AppendLine("\t\tthis.originalData = data = data || {};");
-            constructor.AppendLine("\t\tthis.load(data);");
+            // Read documentation
+            var methodNode = documentation.GetMethodDocumentation(methodInfo);
 
-            var load = new StringBuilder("public load(data:" + CleanName(type) + "Data) {" + Environment.NewLine);
-
-
-            // On construit également la méthode qui convertit en javascript
-            var toData = new StringBuilder("public toJs() {" + Environment.NewLine + "\t\treturn {" + Environment.NewLine);
-
-            // Une méthode pour vérifier si la valeur a changé
-            var hasChanged = new StringBuilder("\tthis.changed = ko.computed(() => " + Environment.NewLine);
-            hasChanged.Append("\t\t\t");
-
-            var view = new StringBuilder();
-            // Hop, on crée la classe dans output
-            view.AppendLine("export class " + CleanName(type) + " {");
-            view.AppendLine("\toriginalData: " + CleanName(type) + "Data;");
-            view.AppendLine("\tchanged: KnockoutComputed<boolean>;");
-            /*view.AppendLine("\tvalid: KnockoutComputed<boolean>");
-                view.AppendLine("\tcanSave: KnockoutComputed<boolean>");*/
-            view.AppendLine();
-            //var valids = new List<string>();
-            bool firstProperty = true;
-            bool firstHasChanged = true;
-
-            var viewData = new StringBuilder();
-            viewData.AppendLine("export interface " + CleanName(type) + "Data {");
-
-            var validableObservables = new List<string>();
-            var validableReferenceObservables = new List<string>();
-            var declaredProperties = type.GetProperties().ToList();
-            foreach (var member in declaredProperties)
+            var summary = methodNode?.Element("summary");
+            if (summary != null)
             {
-                bool last = member.Equals(declaredProperties.Last());
+                actionNode.Documentation = summary.Value;
+            }
 
-                // Add the constructor
-                var camel = Camelize(member.Name);
-                view.Append("\t");
-                view.Append(camel);
-                view.Append(": ");
-                load.Append("\t\tthis." + camel);
-                toData.Append("\t\t\t" + camel + ": ");
+            Dictionary<string, XElement> parameterNodes = null;
 
-                viewData.Append("\t");
-                viewData.Append(camel);
-                viewData.Append("?: ");
+            if (methodNode != null)
+            {
+                parameterNodes = methodNode.Elements("param").ToDictionary(x => x.Attribute("name").Value);
+            }
 
-                // The type
-                var propertyType = member.PropertyType;
-                //bool nullable;
-                if (Nullable.GetUnderlyingType(propertyType) != null)
+            var routeParameters = new Dictionary<string, bool>();
+            var routeParametersMatches = Regex.Matches(route, @"{(\w+)(\?)?(?:\:\w+)?}");
+            foreach (Match match in routeParametersMatches)
+            {
+                var parameter = match.Groups[1].Value;
+                var optional = match.Groups[2].Value == "?";
+                routeParameters.Add(parameter, optional);
+            }
+
+            foreach (var parameterInfo in methodInfo.GetParameters())
+            {
+                var parameter = ReadParameter(parameterInfo, parameterNodes != null && parameterNodes.ContainsKey(parameterInfo.Name) ? parameterNodes[parameterInfo.Name] : null, actionsGroup.Assembly, routeParameters, actionNode.Version);
+                actionNode.Parameters.Add(parameter);
+                if (parameter.Position == ParameterPosition.Body)
                 {
-                    //nullable = true;
-                    propertyType = Nullable.GetUnderlyingType(propertyType);
-                }
-                //else
-                //{
-                //    nullable = !propertyType.IsValueType;
-                //}
-
-                if (member.Name == "Id" && propertyType == typeof (int))
-                {
-                    // Do not make an observable of an id
-                    view.AppendLine("number;");
-                    load.AppendLine(" = data.id;");
-                    toData.AppendLine("this.id" + (last ? "" : ","));
-                    viewData.AppendLine("number;");
-                }
-                else
-                {
-                    if (!firstHasChanged && member.Name != "_destroy")
-                        hasChanged.Append("\t\t\t|| ");
-
-                    Type elementType = propertyType;
-
-                    bool isCollection = false;
-                    bool isDictionary = false;
-                    var propertTypeInfo = propertyType.GetTypeInfo();
-
-                    if (propertTypeInfo.IsGenericType)
-                    {
-                        if (propertyType.GenericTypeArguments.Length > 1)
-                        {
-                            Type dictionaryType = typeof (IDictionary<,>).MakeGenericType(typeof (string),
-                                propertyType.GenericTypeArguments[1]);
-                            var dictionaryTypeInfo = dictionaryType.GetTypeInfo();
-                            if (dictionaryTypeInfo.IsAssignableFrom(propertTypeInfo))
-                            {
-                                isDictionary = true;
-                                elementType = propertyType.GenericTypeArguments[1];
-                            }
-                        }
-
-                        if (!isDictionary)
-                        {
-                            var collectionType = typeof(IEnumerable<>).MakeGenericType(propertyType.GenericTypeArguments[0]);
-                            var readonlyCollectionType = typeof(IReadOnlyCollection<>).MakeGenericType(propertyType.GenericTypeArguments[0]);
-                            var collectionTypeInfo = collectionType.GetTypeInfo();
-                            if (collectionTypeInfo.IsAssignableFrom(propertTypeInfo) ||
-                                readonlyCollectionType.GetTypeInfo().IsAssignableFrom(propertTypeInfo))
-                            {
-                                isCollection = true;
-                                elementType = propertyType.GenericTypeArguments[0];
-                            }
-                        }
-                    }
-                    
-                    var typeName = GetTypeName(elementType, member);
-
-                    if (member.Name == "_destroy")
-                    {
-                        view.Append(typeName);
-                        view.AppendLine(";");
-                        load.AppendLine(" = data." + camel + ";");
-                        toData.AppendLine("this." + camel + (last ? "" : ","));
-                        viewData.AppendLine(typeName + ";");
-                    }
-                    else if (isCollection)
-                    {
-                        RegisterType(elementType);
-                        view.Append("KnockoutObservableArray<" + typeName + ">");
-                        view.AppendLine(" = ko.observableArray<" + typeName + ">();");
-
-                        if (typeName == "Date" || typeName == "string" || elementType.GetTypeInfo().IsEnum)
-                            viewData.AppendLine(typeName + "[];");
-                        else
-                            viewData.AppendLine(typeName + "Data[];");
-
-                        load.Append("(data['" + camel + "'] ? (<any[]>data." + camel + ").map(value => ");
-                        if (NeedNew(elementType))
-                        {
-                            load.Append("new " + typeName + "(value)");
-                            if (typeName == "Date")
-                            {
-                                toData.AppendLine("this." + camel + "()" + (last ? "" : ","));
-                                hasChanged.Append("helper.hasArrayChanged(this." + camel + ", this.originalData." +
-                                                    camel +
-                                                    ")");
-                            }
-                            else
-                            {
-                                toData.AppendLine("this." + camel + "() != null ? this." + camel +
-                                                    "().map(v => v.toJs()) : null" + (last ? "" : ","));
-                                hasChanged.Append("helper.hasArrayOfObjectsChanged(this." + camel +
-                                                    ", this.originalData." +
-                                                    camel + ")");
-                            }
-                        }
-                        else
-                        {
-                            load.Append("value");
-                            toData.AppendLine("this." + camel + "()" + (last ? "" : ","));
-                            hasChanged.Append("helper.hasArrayChanged(this." + camel + ", this.originalData." +
-                                                camel + ")");
-                        }
-                        load.AppendLine(") : null);");
-                        firstHasChanged = false;
-                    }
-                    else if (isDictionary)
-                    {
-                        view.AppendLine($"{{[key:string]:{typeName}}};");
-                        load.AppendLine($" = data.{camel};");
-                        toData.AppendLine($"this.{camel}" + (last ? "" : ","));
-                        viewData.AppendLine($"{{[key:string]:{typeName}}};");
-                    }
-                    else
-                    {
-                        var requiredAttribute = member.GetCustomAttribute<RequiredAttribute>();
-                        var emailAddressAttribute = member.GetCustomAttribute<EmailAddressAttribute>();
-                        var stringLengthAttribute = member.GetCustomAttribute<StringLengthAttribute>();
-                        var compareAttribute = member.GetCustomAttribute<CompareAttribute>();
-                        var minLengthAttribute = member.GetCustomAttribute<MinLengthAttribute>();
-                        var maxLengthAttribute = member.GetCustomAttribute<MaxLengthAttribute>();
-                        var rangeAttribute = member.GetCustomAttribute<RangeAttribute>();
-                        var needValidation = requiredAttribute != null || emailAddressAttribute != null ||
-                                             stringLengthAttribute != null || compareAttribute != null ||
-                                             minLengthAttribute != null
-                                             || rangeAttribute != null || maxLengthAttribute != null;
-
-                        if (needValidation)
-                        {
-                            validableObservables.Add(camel);
-                            view.Append("validator.ValidableObservable<" + typeName + ">");
-                        }
-                        else
-                            view.Append("KnockoutObservable<" + typeName + ">");
-
-                        RegisterType(propertyType);
-                        if (NeedNew(propertyType))
-                        {
-                            if (NeedValidation(propertyType))
-                                validableReferenceObservables.Add(camel);
-                            view.AppendLine(" = ko.observable<" + typeName + ">();");
-                            if (typeName == "Date")
-                            {
-                                load.AppendLine("(data." + camel + " ? new Date(data." + camel + ") : null);");
-                                toData.AppendLine("this." + camel + "()" + (last ? "" : ","));
-                                viewData.AppendLine("string;");
-                            }
-                            else
-                            {
-                                load.AppendLine("(data." + camel + " ? new " + typeName + "(data." + camel + ") : null);");
-                                toData.AppendLine("this." + camel + "() ? this." + camel + "().toJs() : null" +
-                                                  (last ? "" : ","));
-                                viewData.AppendLine(typeName + "Data;");
-                            }
-                        }
-                        else
-                        {
-                            if (needValidation)
-                            {
-                                view.Append(" = validator.validableObservable<" + typeName + ">()");
-                                if (emailAddressAttribute != null)
-                                    view.Append(".addValidator(validator.isEmail)");
-                                if (requiredAttribute != null)
-                                    view.Append(".addValidator(validator.isRequired)");
-                                if (stringLengthAttribute != null)
-                                    view.Append(".addValidator(validator.hasMinLength(" +
-                                                stringLengthAttribute.MinimumLength + "))");
-                                if (minLengthAttribute != null)
-                                    view.Append($".addValidator(validator.hasMinLength({minLengthAttribute.Length}))");
-                                if (maxLengthAttribute != null)
-                                    view.Append($".addValidator(validator.hasMaxLength({maxLengthAttribute.Length}))");
-
-                                if (compareAttribute != null)
-                                    view.Append(".addValidator(validator.areSame(this." +
-                                                Camelize(compareAttribute.OtherProperty) + "))");
-                                if (rangeAttribute != null)
-                                    view.Append(".addValidator(validator.isInRange(" +
-                                                rangeAttribute.Minimum + ", " + rangeAttribute.Maximum + "))");
-
-                                view.AppendLine(";");
-                            }
-                            else
-                                view.AppendLine(" = ko.observable<" + typeName + ">();");
-                            load.AppendLine("(data." + camel + ");");
-                            toData.AppendLine("this." + camel + "()" + (last ? "" : ","));
-                            viewData.AppendLine(typeName + ";");
-                        }
-                        if (propertyType == typeof (DateTime))
-                        {
-                            hasChanged.AppendLine("helper.hasDateChanged(this." + camel + "(), this.originalData." + camel + ")");
-                            //if (!nullable)
-                            //    valids.Add("this." + camel + "() != null");
-                        }
-                        else if (NeedNew(propertyType))
-                        {
-                            hasChanged.AppendLine("helper.hasObjectChanged(this." + camel + "(), this.originalData." + camel + ")");
-                            //valids.Add("(this." + camel + "() == null || this." + camel + "().valid())");
-                        }
-                        else
-                        {
-                            hasChanged.AppendLine("this." + camel + "() !== this.originalData." + camel);
-                            //if (!nullable)
-                            //    valids.Add("this." + camel + "() !== null");
-                        }
-                        firstHasChanged = false;
-                    }
-
-                    firstProperty = false;
+                    parameter.Type.SetWritable();
                 }
             }
 
-            constructor.Append("\t" + hasChanged);
-            if (firstProperty)
-                constructor.AppendLine("false");
-            constructor.AppendLine("\t\t);");
-            /*constructor.Append("\t\tthis.valid = ko.computed(() => ");
-                if (valids.Count == 0)
-                    constructor.Append("true");
-                else
-                    constructor.Append(string.Join(" && ", valids));
-                constructor.AppendLine(");");
-                constructor.AppendLine("\t\tthis.canSave = ko.computed(() => this.changed() && this.valid());");*/
-            constructor.AppendLine("\t}");
-
-            load.AppendLine("\t}");
-            toData.Append("\t\t}" + Environment.NewLine + "\t}");
-            view.AppendLine();
-            view.Append("\t" + constructor);
-            view.AppendLine();
-            view.AppendLine("\t" + toData);
-            view.AppendLine();
-            view.AppendLine("\t" + load);
-            view.AppendLine("\tpublic reset() {");
-            view.AppendLine("\t\tthis.load(this.originalData);");
-            view.AppendLine("\t}");
-
-            if (validableObservables.Count > 0 || validableReferenceObservables.Count > 0)
+            Type returnType;
+            var returnTypeAttribute = methodInfo.GetCustomAttribute<ProducesResponseTypeAttribute>();
+            if (returnTypeAttribute != null)
             {
-                view.AppendLine();
-                view.AppendLine("\tpublic isValid = ko.computed(() => {");
-                view.Append("\t\treturn !loading() ");
-                foreach (var validableObservable in validableObservables)
-                {
-                    view.Append(" && ");
-                    view.Append("!this." + validableObservable + ".validating() && ");
-                    view.Append("this." + validableObservable + ".errorMessage() == null");
-                }
-
-                foreach (var validableReferenceObservable in validableReferenceObservables)
-                {
-                    view.Append(" && ");
-                    view.Append("(!this." + validableReferenceObservable + "() || this." + validableReferenceObservable + "().isValid())");
-                }
-                view.AppendLine(";");
-                view.AppendLine("\t});");
+                returnType = returnTypeAttribute.Type;
             }
-
-            view.AppendLine("}" + Environment.NewLine);
-
-            if (apiAdapter.IsObservableObject(type))
-                viewOut.Append(view);
-
-            viewData.AppendLine("}");
-            viewData.AppendLine();
-            viewOut.Append(viewData);
-        }
-
-        private bool NeedValidation(Type type)
-        {
-            foreach (var property in type.GetProperties())
+            else
             {
-                var attributes = property.CustomAttributes;
-                foreach (var customAttributeData in attributes)
+                returnType = methodInfo.ReturnType;
+                if (returnType.GetTypeInfo().IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
                 {
-                    if (customAttributeData.AttributeType.GetTypeInfo().IsSubclassOf(typeof (ValidationAttribute)))
-                    {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        private void WriteController(Type type)
-        {
-            var routePrefix = apiAdapter.GetRoutePrefixName(type);
-            if (routePrefix == null) return;
-            routePrefix = routePrefix.Replace("[controller]", CleanName(type).Replace("Controller", ""));
-            controllerOut.AppendLine("export class " + CleanName(type) + " {");
-            bool firstController = true;
-            foreach (var method in type.GetMethods().Where(m => m.IsPublic))
-            {
-                if (method.IsSpecialName) continue;
-
-                if (!apiAdapter.IsAction(method))
-                    continue;
-
-                var returnType = apiAdapter.GetReturnType(method);
-
-                bool isCollection = CheckCollectionType(ref returnType);
-                
-                if (!firstController)
-                    controllerOut.AppendLine();
-                firstController = false;
-
-                string returnTypeName = null;
-                if (returnType != null)
-                {
-                    returnTypeName = GetTypeName(returnType, null);
-                    RegisterType(returnType);
-                }
-
-                bool overridable = returnType != null && returnType != typeof (DateTime) && NeedNew(returnType);
-                var viewDataReturnType = overridable
-                    ? returnTypeName + "Data"
-                    : (returnType == typeof (DateTime) ? "string" : returnTypeName);
-                //var fullViewDataReturnType = viewDataReturnType;
-                //if (isCollection)
-                //    fullViewDataReturnType += "[]";
-
-                var name = Camelize(method.Name);
-                var over = new StringBuilder();
-                if (overridable)
-                {
-                    controllerOut.Append("\tpublic " + name + "T<T extends " + returnTypeName + ">(factory: (data:" +
-                                viewDataReturnType);
-                    controllerOut.Append(" ) => T, parameters:{");
-                    over.Append("\tpublic " + name + " = (parameters:{");
-                }
-                else
-                    controllerOut.Append("\tpublic " + name + "(parameters:{");
-
-                bool first = true;
-                string queryParameters = null;
-                ParameterInfo bodyParameter = null;
-                int start = controllerOut.Length;
-
-                foreach (var parameter in method.GetParameters())
-                {
-                    if (!first)
-                    {
-                        controllerOut.Append("; ");
-                    }
-
-                    first = false;
-                    var parameterType = parameter.ParameterType;
-
-                    bool isCollectionParameter = CheckCollectionType(ref parameterType);
-
-                    RegisterType(parameterType);
-                    string parameterTypeName = GetTypeName(parameterType, null);
-
-                    if (isCollectionParameter)
-                        parameterTypeName += "[]";
-                    controllerOut.Append(parameter.Name);
-                    if (parameter.IsOptional)
-                        controllerOut.Append("?");
-                    controllerOut.Append(':');
-                    controllerOut.Append(parameterTypeName);
-
-                    if (apiAdapter.IsParameterFromUri(parameter))
-                    {
-                        if (queryParameters != null)
-                            queryParameters += ", ";
-                        queryParameters += parameter.Name + ": parameters." + parameter.Name;
-                    }
-                    if (apiAdapter.IsParameterFromBody(parameter))
-                        bodyParameter = parameter;
-                }
-                /*controllerOut.Append("}, success?:(");
-                
-                if (returnTypeName != null)
-                {
-                    controllerOut.Append(Camelize(returnType.Name));
-                    if (isCollection)
-                        controllerOut.Append('s');
-                    controllerOut.Append(':');
-                    if (overridable)
-                        over.Append(controllerOut.ToString().Substring(start));
-
-                    if (overridable)
-                    {
-                        controllerOut.Append("T");
-                        over.Append(returnTypeName);
-                        start = controllerOut.ToString().Length;
-                    }
-                    else
-                        controllerOut.Append(returnTypeName);
-
-                    if (isCollection)
-                        controllerOut.Append("[]");
-                }
-                */
-                if (overridable)
-                {
-                    over.Append(controllerOut.ToString().Substring(start));
-                    over.AppendLine("}) => {");
-                    over.AppendLine("\t\treturn this." + name + "T(data => new " + returnTypeName +
-                                    "(data), parameters);");
-                    over.AppendLine("\t}");
-                }
-                controllerOut.AppendLine("}) {");
-                string httpMethod;
-                if (apiAdapter.IsPostAction(method))
-                    httpMethod = "POST";
-                else if (apiAdapter.IsPutAction(method))
-                    httpMethod = "PUT";
-                else if (apiAdapter.IsDeleteAction(method))
-                    httpMethod = "DELETE";
-                else
-                    httpMethod = "GET";
-
-                controllerOut.Append("\t\treturn helper.fetch");
-
-                if (returnType != null)
-                {
-                    controllerOut.Append(isCollection ? "List" : "Single");
-                    if (overridable || returnType == typeof (DateTime))
-                    {
-                        controllerOut.Append("T");
-                    }
-                    else
-                    {
-                        controllerOut.Append($"<{returnTypeName}>");
-                    }
-                }
-                else
-                {
-                    controllerOut.Append("Void");
-                }
-
-                controllerOut.Append("('");
-                var route = apiAdapter.GetRouteFormat(method);
-                if (route.IndexOf("~/", StringComparison.Ordinal) == 0)
-                    route = route.Substring(1);
-                else
-                    route = "/" + routePrefix + "/" + route;
-                var routeString = Regex.Replace(route, @"{(\w+)(:.*?)?}",
-                    match => "' + parameters." + match.Groups[1].Value + " + '");
-                controllerOut.Append(routeString);
-                controllerOut.Append("'");
-                if (queryParameters != null)
-                {
-                    controllerOut.Append(" + helper.getQueryString({");
-                    controllerOut.Append(queryParameters);
-                    controllerOut.Append("})");
-                }
-                controllerOut.Append(", '" + httpMethod + "', ");
-                if (returnType != null)
-                {
-                    if (overridable)
-                    {
-                        controllerOut.Append("factory, ");
-                    }
-                    else if (returnType == typeof (DateTime))
-                    {
-                        controllerOut.Append("(d:string) => new Date(d), ");
-                    }
-                }
-
-                if (bodyParameter != null)
-                {
-                    var bodyType = bodyParameter.ParameterType;
-                    if (CheckCollectionType(ref bodyType))
-                    {
-                        if (NeedNew(bodyType) && bodyType != typeof (DateTime))
-                            controllerOut.Append("JSON.stringify(parameters." + bodyParameter.Name + ".map(v => v.toJs()))");
-                        else
-                            controllerOut.Append("JSON.stringify(parameters." + bodyParameter.Name + ")");
-                    }
-                    else
-                    {
-                        if (NeedNew(bodyType) && apiAdapter.IsObservableObject(bodyType) && bodyType != typeof (DateTime))
-                            controllerOut.Append("JSON.stringify(parameters." + bodyParameter.Name + ".toJs())");
-                        else
-                            controllerOut.Append("JSON.stringify(parameters." + bodyParameter.Name + ")");
-                    }
-                }
-                else
-                {
-                    controllerOut.Append("null");
-                }
-
-                controllerOut.AppendLine(");");
-                controllerOut.AppendLine("\t}");
-                if (overridable)
-                {
-                    controllerOut.AppendLine();
-                    controllerOut.Append(over);
-                }
-            }
-            controllerOut.AppendLine("}" + Environment.NewLine);
-            controllerOut.AppendLine("export var " + Camelize(CleanName(type).Replace("Controller", "")) + " = new " + CleanName(type) + "();");
-            controllerOut.AppendLine();
-        }
-
-        private List<Type> LoadControllers(IEnumerable<Assembly> assemblies)
-        {
-            var controllers = new List<Type>();
-            foreach (var siteAssembly in assemblies)
-            {
-                foreach (var type in siteAssembly.ExportedTypes.Where(t => t.Name != "TypedController" && t.GetTypeInfo().IsClass && t.Name.EndsWith("Controller")))
-                {
-                    if (!apiAdapter.IsController(type))
-                        continue;
-                    controllers.Add(type);
-                }
-            }
-            return controllers;
-        }
-
-        private void RegisterType(Type propertyType)
-        {
-            if (propertyType.Namespace == "System")
-                return;
-
-            if (propertyType.GetTypeInfo().IsEnum)
-            {
-                if (!enums.Contains(propertyType))
-                    enums.Add(propertyType);
-                return;
-            }
-
-            if (!views.ContainsKey(propertyType))
-                views.Add(propertyType, false);
-        }
-        
-        private static bool CheckCollectionType(ref Type returnType)
-        {
-            if (returnType == null) return false;
-            bool isCollection = false;
-            if (returnType.GetTypeInfo().IsGenericType)
-            {
-                var collectionType = returnType.GetGenericTypeDefinition();
-                if (collectionType.GetTypeInfo().ImplementedInterfaces.Any(x => x.Name == "IEnumerable"))
-                {
-                    isCollection = true;
                     returnType = returnType.GenericTypeArguments[0];
                 }
-            }
-            else if (returnType.IsArray)
-            {
-                isCollection = true;
-                returnType = returnType.GetElementType();
-            }
-            return isCollection;
-        }
 
-        private static string Camelize(string name)
-        {
-            return name[0].ToString().ToLowerInvariant() + name.Substring(1);
-        }
-
-        private static bool NeedNew(Type type)
-        {
-            return !(type == typeof(int) || type == typeof(long) || type == typeof(float) || type == typeof(double) || type == typeof(string) || type == typeof(bool) || type == typeof(decimal) || type == typeof(TimeSpan) || type == typeof(object)) && !type.GetTypeInfo().IsEnum;
-        }
-
-        private static readonly Regex cleaName = new Regex(@"`\d+");
-
-        private string GetTypeName(Type type, PropertyInfo propertyInfo)
-        {
-            if (type == typeof(int) || type == typeof(float) || type == typeof(double) || type == typeof(long) || type == typeof(decimal))
-                return "number";
-            if (type == typeof(string) || type == typeof(TimeSpan))
-                return "string";
-            if (type == typeof(DateTime))
-                return "Date";
-            if (type == typeof(bool))
-                return "boolean";
-            if (type == typeof (object))
-            {
-                if (propertyInfo != null)
+                if (returnType.GetTypeInfo().IsGenericType && returnType.GetGenericTypeDefinition() == typeof(IHttpActionResult<>))
                 {
-                    var returnTypes = apiAdapter.GetUnionTypes(propertyInfo).ToList();
-                    if (returnTypes.Any())
-                    {
-                        foreach (var returnType in returnTypes)
-                        {
-                            RegisterType(returnType);
-                        }
-                        return string.Join("|", returnTypes.Select(x => GetTypeName(x, null)));
-                    }
+                    returnType = returnType.GenericTypeArguments[0];
                 }
 
-                return "any";
+                if (returnType.GetInterfaces().Contains(typeof(IActionResult)) || returnType == typeof(IActionResult) || returnType == typeof(Task))
+                {
+                    returnType = null;
+                }
             }
 
-            if (!apiAdapter.IsObservableObject(type))
-                return CleanName(type) + "Data";
-            return CleanName(type);
+            if (returnType != null && returnType != typeof(void))
+            {
+                var returnDocumentation = methodNode?.Element("returns");
+                actionNode.Return = ReadReturn(returnType, actionsGroup.Assembly, returnDocumentation, actionNode.Version);
+            }
+
+            return actionNode;
         }
 
-        private static string CleanName(Type type)
+        public ParameterNode ReadParameter(ParameterInfo parameterInfo, XElement documentationNode, AssemblyNode assembly, Dictionary<string, bool> routeParameters, string version)
         {
-            return cleaName.Replace(type.Name, "");
+            var parameterNode = new ParameterNode { Name = parameterInfo.Name };
+            var parameterType = parameterInfo.ParameterType;
+            parameterNode.Documentation = documentation.ParseDocumentation(documentationNode);
+            parameterNode.IsRequired = RemoveNullable(ref parameterType);
+            if (parameterInfo.DefaultValue != null)
+                parameterNode.IsRequired = false;
+            FillType(parameterNode, parameterType, assembly, new Type[0], version);
+
+            if (routeParameters.ContainsKey(parameterInfo.Name))
+            {
+                parameterNode.Position = ParameterPosition.Path;
+                parameterNode.IsRequired = !routeParameters[parameterInfo.Name];
+            }
+            else if (parameterInfo.GetCustomAttribute<FromQueryAttribute>() != null)
+            {
+                parameterNode.Position = ParameterPosition.Query;
+            }
+            else if (parameterInfo.GetCustomAttribute<FromBodyAttribute>() != null || parameterNode.Type.Type == TypeIdentifier.Object)
+            {
+                parameterNode.Position = ParameterPosition.Body;
+                parameterNode.IsRequired = true;
+            }
+            else
+            {
+                parameterNode.Position = ParameterPosition.Query;
+            }
+
+
+            GetConstraints(parameterInfo.GetCustomAttributes().ToArray(), parameterNode);
+
+            return parameterNode;
+        }
+
+        private void FillType(ITypedNode typedNode, Type parameterType, AssemblyNode assembly, Type[] parents, string version)
+        {
+            if (Nullable.GetUnderlyingType(parameterType) == null && parameterType.GetTypeInfo().IsGenericType)
+            {
+                if (parameterType.ImplementsInterface(typeof(IDictionary<,>)))
+                {
+                    typedNode.IsDictionary = true;
+                    parameterType = parameterType.GenericTypeArguments[1];
+                }
+                else if (parameterType.ImplementsInterface(typeof(IEnumerable<>)))
+                {
+                    typedNode.IsCollection = true;
+                    parameterType = parameterType.GenericTypeArguments[0];
+                }
+            }
+
+            if (parameterType.IsArray)
+            {
+                typedNode.IsCollection = true;
+                parameterType = parameterType.GetElementType();
+            }
+
+            typedNode.Type = ReadType(parameterType, assembly, parents, version);
+        }
+
+        public TypeNode ReadType(Type parameterType, AssemblyNode assembly, Type[] parents, string version)
+        {
+            var parameterTypeName = parameterType.Name;
+
+            var classNode = new TypeNode { Version = version };
+
+            classNode.Documentation = documentation.GetDocumentation(parameterType);
+
+            if (parameterType.GetTypeInfo().IsEnum)
+            {
+                if (assembly.Types.ContainsKey(parameterTypeName))
+                {
+                    return assembly.Types[parameterTypeName];
+                }
+
+                var enumNames = parameterType.GetTypeInfo().GetEnumNames();
+                var enumValues = parameterType.GetTypeInfo().GetEnumValues();
+
+                classNode.Name = parameterType.Name;
+                classNode.Type = TypeIdentifier.Enum;
+                classNode.Values = new List<EnumValueNode>();
+                for (var i = 0; i < enumValues.Length; i++)
+                {
+                    var enumValue = new EnumValueNode
+                    {
+                        Name = enumNames[i],
+                        Value = Convert.ToInt32(enumValues.GetValue(i)),
+                        Documentation = documentation.GetDocumentation(parameterType, enumNames[i])
+                    };
+                    classNode.Values.Add(enumValue);
+                }
+                assembly.Types[classNode.Name] = classNode;
+            }
+            else if (parameterType == typeof(string))
+            {
+                classNode.Type = TypeIdentifier.String;
+            }
+            else if (parameterType == typeof(long))
+            {
+                classNode.Type = TypeIdentifier.Long;
+            }
+            else if (parameterType == typeof(int) || parameterType == typeof(short))
+            {
+                classNode.Type = TypeIdentifier.Int;
+            }
+            else if (parameterType == typeof(float))
+            {
+                classNode.Type = TypeIdentifier.Float;
+            }
+            else if (parameterType == typeof(double))
+            {
+                classNode.Type = TypeIdentifier.Double;
+            }
+            else if (parameterType == typeof(DateTime))
+            {
+                classNode.Type = TypeIdentifier.DateTime;
+            }
+            else if (parameterType == typeof(bool))
+            {
+                classNode.Type = TypeIdentifier.Boolean;
+            }
+            else if (parameterType == typeof(decimal))
+            {
+                classNode.Type = TypeIdentifier.Decimal;
+            }
+            else if (parameterType == typeof(Guid))
+            {
+                classNode.Type = TypeIdentifier.Guid;
+            }
+            else if (parameterType == typeof(TimeSpan))
+            {
+                classNode.Type = TypeIdentifier.TimeSpan;
+            }
+            else if (parameterType == typeof(object))
+            {
+                classNode.Type = TypeIdentifier.Any;
+            }
+            else
+            {
+                if (assembly.Types.ContainsKey(parameterTypeName))
+                {
+                    return assembly.Types[parameterTypeName];
+                }
+
+                classNode.IsReadOnly = true;
+                classNode.Name = parameterType.Name;
+                classNode.Type = TypeIdentifier.Object;
+
+                assembly.Types[classNode.Name] = classNode;
+
+                if (parents.All(x => x != parameterType))
+                {
+                    classNode.Properties = ReadProperties(parameterType, parents, assembly, version);
+                }
+
+                var jsonAttribute = parameterType.GetTypeInfo().GetCustomAttribute<JsonAttribute>();
+                if (jsonAttribute != null)
+                {
+                    classNode.IsObservable = jsonAttribute.Observable;
+                }
+            }
+
+
+            return classNode;
+        }
+
+
+        private ReturnNode ReadReturn(Type responseType, AssemblyNode assembly, XElement documentationNode, string version)
+        {
+            var returnNode = new ReturnNode
+            {
+                Documentation = documentation.ParseDocumentation(documentationNode)
+            };
+            FillType(returnNode, responseType, assembly, new Type[0], version);
+            return returnNode;
+        }
+
+        public List<PropertyNode> ReadProperties(Type type, Type[] parents, AssemblyNode assembly, string version)
+        {
+            var newParents = new Type[parents.Length + 1];
+            parents.CopyTo(newParents, 0);
+            newParents[parents.Length] = type;
+
+            return type.GetProperties()
+                .Where(propertyInfo => !IsIgnored(propertyInfo))
+                .Select(propertyInfo => ReadProperty(propertyInfo, newParents, assembly, version))
+                .ToList();
+        }
+
+        private PropertyNode ReadProperty(PropertyInfo propertyInfo, Type[] newParents, AssemblyNode assembly, string version)
+        {
+            var propertyType = propertyInfo.PropertyType;
+            var propertyNode = new PropertyNode
+            {
+                Name = StringHelpers.ToCamelCase(propertyInfo.Name),
+                IsRequired = RemoveNullable(ref propertyType),
+                Documentation = documentation.GetDocumentation(propertyInfo)
+            };
+
+            var returnTypeAttributes = propertyInfo.GetCustomAttributes<ReturnTypeAttribute>().ToArray();
+            if (returnTypeAttributes.Any())
+            {
+                if (returnTypeAttributes.Length == 1)
+                {
+                    FillType(propertyNode, returnTypeAttributes[0].ReturnType, assembly, newParents, version);
+                }
+                else
+                {
+                    propertyNode.Type = new TypeNode
+                    {
+                        Type = TypeIdentifier.Union,
+                        Union = returnTypeAttributes.Select(x => ReadType(x.ReturnType, assembly, newParents, version)).ToArray()
+                    };
+                }
+            }
+            else
+            {
+                FillType(propertyNode, propertyType, assembly, newParents, version);
+            }
+
+            var readOnly = propertyInfo.GetCustomAttribute<ReadOnlyAttribute>();
+            if (readOnly != null && readOnly.IsReadOnly)
+            {
+                propertyNode.IsReadOnly = true;
+            }
+            var editable = propertyInfo.GetCustomAttribute<EditableAttribute>();
+            if (editable != null && !editable.AllowEdit)
+            {
+                propertyNode.IsReadOnly = true;
+            }
+
+            propertyNode.IsObservable = propertyNode.Name != "id" && !propertyNode.IsReadOnly;
+
+            GetConstraints(propertyInfo.GetCustomAttributes().ToArray(), propertyNode);
+
+            return propertyNode;
+        }
+
+        private static bool IsIgnored(PropertyInfo propertyInfo)
+        {
+            return propertyInfo.GetCustomAttribute<JsonIgnoreAttribute>() != null
+                || propertyInfo.GetCustomAttribute<IgnoreDataMemberAttribute>() != null;
+        }
+
+        private static bool RemoveNullable(ref Type parameterType)
+        {
+            var required = true;
+            if (Nullable.GetUnderlyingType(parameterType) != null)
+            {
+                required = false;
+                parameterType = Nullable.GetUnderlyingType(parameterType);
+            }
+
+            if (!parameterType.GetTypeInfo().IsValueType)
+            {
+                required = false;
+            }
+            return required;
+        }
+
+        private static void GetConstraints(Attribute[] attributes, IConstraintsNode constraintsNode)
+        {
+            if (attributes != null)
+            {
+                if (attributes.Any(x => x is RequiredAttribute))
+                {
+                    constraintsNode.IsRequired = true;
+                }
+
+                var stringLengthAttribute = attributes.OfType<StringLengthAttribute>().FirstOrDefault();
+                if (stringLengthAttribute != null)
+                {
+                    constraintsNode.MinimumLength = stringLengthAttribute.MinimumLength;
+                    constraintsNode.MaximumLength = stringLengthAttribute.MaximumLength;
+                }
+
+                var minLengthAttribute = attributes.OfType<MaxLengthAttribute>().FirstOrDefault();
+                if (minLengthAttribute != null)
+                {
+                    constraintsNode.MinimumLength = minLengthAttribute.Length;
+                }
+
+                var maxLengthAttribute = attributes.OfType<MaxLengthAttribute>().FirstOrDefault();
+                if (maxLengthAttribute != null)
+                {
+                    constraintsNode.MaximumLength = maxLengthAttribute.Length;
+                }
+
+                var compareAttribute = attributes.OfType<CompareAttribute>().FirstOrDefault();
+                if (compareAttribute != null)
+                {
+                    constraintsNode.CompareTo = StringHelpers.ToCamelCase(compareAttribute.OtherProperty);
+                }
+
+                var rangeAttribute = attributes.OfType<RangeAttribute>().FirstOrDefault();
+                if (rangeAttribute != null)
+                {
+                    constraintsNode.Minimum = rangeAttribute.Minimum;
+                    constraintsNode.Maximum = rangeAttribute.Maximum;
+                }
+
+                if (attributes.Any(x => x is EmailAddressAttribute))
+                {
+                    constraintsNode.Format = Format.Email;
+                }
+            }
         }
     }
 }
