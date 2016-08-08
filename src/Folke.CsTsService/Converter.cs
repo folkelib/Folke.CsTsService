@@ -115,18 +115,20 @@ namespace Folke.CsTsService
             {
                 route = routeAttribute.Template;
             }
-
+            
             if (route == null)
             {
-                route = methodInfo.Name;
+                return null;
             }
 
-            if (actionNode.Type == ActionMethod.Unknown && routeAttribute != null)
+            if (actionNode.Type == ActionMethod.Unknown)
             {
                 if (methodInfo.Name.StartsWith("Get", StringComparison.OrdinalIgnoreCase)) actionNode.Type = ActionMethod.Get;
                 else if (methodInfo.Name.StartsWith("Post", StringComparison.OrdinalIgnoreCase)) actionNode.Type = ActionMethod.Post;
                 else if (methodInfo.Name.StartsWith("Put", StringComparison.OrdinalIgnoreCase)) actionNode.Type = ActionMethod.Put;
                 else if (methodInfo.Name.StartsWith("Delete", StringComparison.OrdinalIgnoreCase)) actionNode.Type = ActionMethod.Delete;
+                else
+                    return null;
             }
 
             // Remove type info from route
@@ -142,11 +144,6 @@ namespace Folke.CsTsService
 
             actionNode.Name = methodInfo.Name;
             actionNode.Route = route;
-
-            if (actionNode.Type == ActionMethod.Unknown)
-            {
-                return null;
-            }
 
             var versionMatch = Regex.Match(route, @"api/v([\d\.])+");
             actionNode.Version = versionMatch.Success ? versionMatch.Groups[1].Value : null;
