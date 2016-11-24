@@ -115,7 +115,7 @@ namespace Folke.CsTsService
             {
                 route = routeAttribute.Template;
             }
-            
+
             if (route == null)
             {
                 return null;
@@ -153,7 +153,7 @@ namespace Folke.CsTsService
             {
                 actionNode.Authorization = authorizeAttribute.Policy ?? authorizeAttribute.Roles;
             }
-            
+
             // Read documentation
             var methodNode = documentation.GetMethodDocumentation(methodInfo);
 
