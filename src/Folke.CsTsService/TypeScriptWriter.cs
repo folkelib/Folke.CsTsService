@@ -167,10 +167,10 @@ namespace Folke.CsTsService
             result.AppendLine("function fromDate(date:Date) {");
             result.AppendLine($"{Tab}return date != undefined ? date.toISOString() : undefined;");
             result.AppendLine("}");
-            result.AppendLine("function arrayChanged<T>(array: ko.ObservableArray<T>, original: T[]) {");
+            result.AppendLine("function arrayChanged<T>(array: KnockoutObservableArray<T>, original: T[]) {");
             result.AppendLine($"{Tab}return array() && (!original || array().length !== original.length);");
             result.AppendLine("}");
-            result.AppendLine("function dateArrayChanged(array: ko.ObservableArray<Date>, original: string[]) {");
+            result.AppendLine("function dateArrayChanged(array: KnockoutObservableArray<Date>, original: string[]) {");
             result.AppendLine($"{Tab}return array() && (!original || array().length !== original.length);");
             result.AppendLine("}");
 
@@ -192,7 +192,7 @@ namespace Folke.CsTsService
             result.AppendLine($"export class {viewNode.Name} {{");
             var cleanName = viewNode.CleanName;
             result.AppendLine($"{Tab}originalData: views.{cleanName};");
-            result.AppendLine($"{Tab}changed: ko.Computed<boolean>;");
+            result.AppendLine($"{Tab}changed: KnockoutComputed<boolean>;");
 
             bool first = true;
             foreach (var property in viewNode.Properties)
@@ -401,14 +401,7 @@ namespace Folke.CsTsService
             }
             else
             {
-                if (property.NeedValidation())
-                {
-                    result.Append(" = validation.validableObservable<");
-                }
-                else
-                {
-                    result.Append(" = ko.observable<");
-                }
+                result.Append(property.NeedValidation() ? " = validation.validableObservable<" : " = ko.observable<");
                 WriteTypedNode(property, result, false, prefixModule: PrefixModules.Views, allowObservable: true);
             }
             result.Append(">()");
@@ -569,10 +562,7 @@ namespace Folke.CsTsService
                     result.Append("boolean");
                     break;
                 case TypeIdentifier.DateTime:
-                    if (allowObservable)
-                        result.Append("Date");
-                    else
-                        result.Append("string");
+                    result.Append(allowObservable ? "Date" : "string");
                     break;
                 case TypeIdentifier.Object:
                     if (allowObservable && classNode.IsObservable)
@@ -634,7 +624,7 @@ namespace Folke.CsTsService
 
             if (actionNode.Documentation != null && actionNode.Documentation.Any()
                 || actionNode.Parameters.Any(x => x.Documentation != null && x.Documentation.Any())
-                || (actionNode.Return != null && actionNode.Return.Documentation != null && actionNode.Return.Documentation.Any()))
+                || (actionNode.Return?.Documentation != null && actionNode.Return.Documentation.Any()))
             {
                 controllersOutput.AppendLine($"{Tab}/**");
 
