@@ -15,6 +15,7 @@
         Guid,
         Any,
         TimeSpan,
-        Union
+        Union,
+        GenericParameter
     }
 }

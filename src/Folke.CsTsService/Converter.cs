@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
@@ -181,11 +182,11 @@ namespace Folke.CsTsService
 
             foreach (var parameterInfo in methodInfo.GetParameters())
             {
-                var parameter = ReadParameter(parameterInfo, parameterNodes != null && parameterNodes.ContainsKey(parameterInfo.Name) ? parameterNodes[parameterInfo.Name] : null, actionsGroup.Assembly, routeParameters, actionNode.Version);
+                var parameter = ReadParameter(parameterInfo, parameterNodes != null && parameterNodes.ContainsKey(parameterInfo.Name) ? parameterNodes[parameterInfo.Name] : null, actionsGroup.Assembly, routeParameters, actionNode);
                 actionNode.Parameters.Add(parameter);
                 if (parameter.Position == ParameterPosition.Body)
                 {
-                    parameter.Type.SetWritable();
+                    parameter.Type.Class?.SetWritable();
                 }
             }
 
@@ -217,13 +218,13 @@ namespace Folke.CsTsService
             if (returnType != null && returnType != typeof(void))
             {
                 var returnDocumentation = methodNode?.Element("returns");
-                actionNode.Return = ReadReturn(returnType, actionsGroup.Assembly, returnDocumentation, actionNode.Version);
+                actionNode.Return = ReadReturn(returnType, actionsGroup.Assembly, returnDocumentation, actionNode);
             }
 
             return actionNode;
         }
 
-        public ParameterNode ReadParameter(ParameterInfo parameterInfo, XElement documentationNode, AssemblyNode assembly, Dictionary<string, bool> routeParameters, string version)
+        public ParameterNode ReadParameter(ParameterInfo parameterInfo, XElement documentationNode, AssemblyNode assembly, Dictionary<string, bool> routeParameters, ActionNode actionNode)
         {
             var parameterNode = new ParameterNode { Name = parameterInfo.Name };
             var parameterType = parameterInfo.ParameterType;
@@ -231,7 +232,7 @@ namespace Folke.CsTsService
             parameterNode.IsRequired = RemoveNullable(ref parameterType);
             if (parameterInfo.DefaultValue != null)
                 parameterNode.IsRequired = false;
-            FillType(parameterNode, parameterType, assembly, new Type[0], version);
+            parameterNode.Type = ReadType(parameterType, assembly, new Type[0], actionNode);
 
             if (routeParameters.ContainsKey(parameterInfo.Name))
             {
@@ -257,150 +258,170 @@ namespace Folke.CsTsService
 
             return parameterNode;
         }
-
-        private void FillType(ITypedNode typedNode, Type parameterType, AssemblyNode assembly, Type[] parents, string version)
+        
+        public TypeNode ReadType(Type parameterType, AssemblyNode assembly, Type[] parents, ActionNode actionNode)
         {
+            var typeNode = new TypeNode();
             if (Nullable.GetUnderlyingType(parameterType) == null && parameterType.GetTypeInfo().IsGenericType)
             {
                 if (parameterType.ImplementsInterface(typeof(IDictionary<,>)))
                 {
-                    typedNode.IsDictionary = true;
+                    typeNode.IsDictionary = true;
                     parameterType = parameterType.GenericTypeArguments[1];
                 }
                 else if (parameterType.ImplementsInterface(typeof(IEnumerable<>)))
                 {
-                    typedNode.IsCollection = true;
+                    typeNode.IsCollection = true;
                     parameterType = parameterType.GenericTypeArguments[0];
                 }
             }
 
             if (parameterType.IsArray)
             {
-                typedNode.IsCollection = true;
+                typeNode.IsCollection = true;
                 parameterType = parameterType.GetElementType();
             }
 
-            typedNode.Type = ReadType(parameterType, assembly, parents, version);
-        }
-
-        public TypeNode ReadType(Type parameterType, AssemblyNode assembly, Type[] parents, string version)
-        {
-            var parameterTypeName = parameterType.Name;
-
-            var classNode = new TypeNode { Version = version };
-
-            classNode.Documentation = documentation.GetDocumentation(parameterType);
+            if (parameterType.GetTypeInfo().IsGenericType)
+            {
+                typeNode.GenericParameters = parameterType.GenericTypeArguments.Select(x => ReadType(x, assembly, parents, actionNode)).ToList();
+                parameterType = parameterType.GetGenericTypeDefinition();
+            }
 
             if (parameterType.GetTypeInfo().IsEnum)
             {
-                if (assembly.Types.ContainsKey(parameterTypeName))
-                {
-                    return assembly.Types[parameterTypeName];
-                }
-
-                var enumNames = parameterType.GetTypeInfo().GetEnumNames();
-                var enumValues = parameterType.GetTypeInfo().GetEnumValues();
-
-                classNode.Name = parameterType.Name;
-                classNode.Type = TypeIdentifier.Enum;
-                classNode.Values = new List<EnumValueNode>();
-                for (var i = 0; i < enumValues.Length; i++)
-                {
-                    var enumValue = new EnumValueNode
-                    {
-                        Name = enumNames[i],
-                        Value = Convert.ToInt32(enumValues.GetValue(i)),
-                        Documentation = documentation.GetDocumentation(parameterType, enumNames[i])
-                    };
-                    classNode.Values.Add(enumValue);
-                }
-                assembly.Types[classNode.Name] = classNode;
+                typeNode.Type = TypeIdentifier.Enum;
+                typeNode.Class = ReadClass(parameterType, assembly, actionNode, parents);
             }
             else if (parameterType == typeof(string))
             {
-                classNode.Type = TypeIdentifier.String;
+                typeNode.Type = TypeIdentifier.String;
             }
             else if (parameterType == typeof(long))
             {
-                classNode.Type = TypeIdentifier.Long;
+                typeNode.Type = TypeIdentifier.Long;
             }
             else if (parameterType == typeof(int) || parameterType == typeof(short))
             {
-                classNode.Type = TypeIdentifier.Int;
+                typeNode.Type = TypeIdentifier.Int;
             }
             else if (parameterType == typeof(float))
             {
-                classNode.Type = TypeIdentifier.Float;
+                typeNode.Type = TypeIdentifier.Float;
             }
             else if (parameterType == typeof(double))
             {
-                classNode.Type = TypeIdentifier.Double;
+                typeNode.Type = TypeIdentifier.Double;
             }
             else if (parameterType == typeof(DateTime))
             {
-                classNode.Type = TypeIdentifier.DateTime;
+                typeNode.Type = TypeIdentifier.DateTime;
             }
             else if (parameterType == typeof(bool))
             {
-                classNode.Type = TypeIdentifier.Boolean;
+                typeNode.Type = TypeIdentifier.Boolean;
             }
             else if (parameterType == typeof(decimal))
             {
-                classNode.Type = TypeIdentifier.Decimal;
+                typeNode.Type = TypeIdentifier.Decimal;
             }
             else if (parameterType == typeof(Guid))
             {
-                classNode.Type = TypeIdentifier.Guid;
+                typeNode.Type = TypeIdentifier.Guid;
             }
             else if (parameterType == typeof(TimeSpan))
             {
-                classNode.Type = TypeIdentifier.TimeSpan;
+                typeNode.Type = TypeIdentifier.TimeSpan;
             }
             else if (parameterType == typeof(object))
             {
-                classNode.Type = TypeIdentifier.Any;
+                typeNode.Type = TypeIdentifier.Any;
+            }
+            else if (parameterType.IsGenericParameter)
+            {
+                typeNode.Type = TypeIdentifier.GenericParameter;
+                typeNode.GenericName = parameterType.Name;
             }
             else
             {
-                if (assembly.Types.ContainsKey(parameterTypeName))
-                {
-                    return assembly.Types[parameterTypeName];
-                }
-
-                classNode.IsReadOnly = true;
-                classNode.Name = parameterType.Name;
-                classNode.Type = TypeIdentifier.Object;
-
-                assembly.Types[classNode.Name] = classNode;
-
-                if (parents.All(x => x != parameterType))
-                {
-                    classNode.Properties = ReadProperties(parameterType, parents, assembly, version);
-                }
-
-                var jsonAttribute = parameterType.GetTypeInfo().GetCustomAttribute<JsonAttribute>();
-                if (jsonAttribute != null)
-                {
-                    classNode.IsObservable = jsonAttribute.Observable;
-                }
+                typeNode.Type = TypeIdentifier.Object;
+                typeNode.Class = ReadClass(parameterType, assembly, actionNode, parents);
             }
+            
+            return typeNode;
+        }
 
+        private ClassNode ReadClass(Type parameterType, AssemblyNode assembly, ActionNode actionNode, Type[] parents)
+        {
+            var parameterTypeName = Regex.Replace(parameterType.Name, "`.*", "");
+            
+            ClassNode classNode;
+            if (assembly.Types.ContainsKey(parameterTypeName))
+            {
+                classNode = assembly.Types[parameterTypeName];
+            }
+            else
+            {
+                classNode = new ClassNode
+                {
+                    Version = actionNode.Version,
+                    Documentation = documentation.GetDocumentation(parameterType)
+                };
+                
+                classNode.KoName = parameterTypeName;
+                classNode.Name = Regex.Replace(parameterTypeName, @"View(Model)?$", string.Empty);
+                if (parameterType.GetTypeInfo().IsEnum)
+                {
+                    var enumNames = parameterType.GetTypeInfo().GetEnumNames();
+                    var enumValues = parameterType.GetTypeInfo().GetEnumValues();
 
+                    classNode.Values = new List<EnumValueNode>();
+                    for (var i = 0; i < enumValues.Length; i++)
+                    {
+                        var enumValue = new EnumValueNode
+                        {
+                            Name = enumNames[i],
+                            Value = Convert.ToInt32(enumValues.GetValue(i)),
+                            Documentation = documentation.GetDocumentation(parameterType, enumNames[i])
+                        };
+                        classNode.Values.Add(enumValue);
+                    }
+                }
+                else
+                {
+                    if (parents.All(x => x != parameterType))
+                    {
+                        classNode.Properties = ReadProperties(parameterType, parents, assembly, actionNode);
+                    }
+
+                    if (parameterType.GetTypeInfo().IsGenericTypeDefinition)
+                    {
+                        classNode.GenericParameters = parameterType.GetGenericArguments().Select(x => x.Name).ToList();
+                    }
+
+                    var jsonAttribute = parameterType.GetTypeInfo().GetCustomAttribute<JsonAttribute>();
+                    if (jsonAttribute != null)
+                    {
+                        classNode.IsObservable = jsonAttribute.Observable;
+                    }
+                }
+                assembly.Types[classNode.KoName] = classNode;
+            }
             return classNode;
         }
 
 
-        private ReturnNode ReadReturn(Type responseType, AssemblyNode assembly, XElement documentationNode, string version)
+        private ReturnNode ReadReturn(Type responseType, AssemblyNode assembly, XElement documentationNode, ActionNode actionNode)
         {
             var returnNode = new ReturnNode
             {
-                Documentation = documentation.ParseDocumentation(documentationNode)
+                Documentation = documentation.ParseDocumentation(documentationNode),
+                Type = ReadType(responseType, assembly, new Type[0], actionNode)
             };
-            FillType(returnNode, responseType, assembly, new Type[0], version);
             return returnNode;
         }
 
-        public List<PropertyNode> ReadProperties(Type type, Type[] parents, AssemblyNode assembly, string version)
+        public List<PropertyNode> ReadProperties(Type type, Type[] parents, AssemblyNode assembly, ActionNode actionNode)
         {
             var newParents = new Type[parents.Length + 1];
             parents.CopyTo(newParents, 0);
@@ -408,11 +429,11 @@ namespace Folke.CsTsService
 
             return type.GetProperties()
                 .Where(propertyInfo => !IsIgnored(propertyInfo))
-                .Select(propertyInfo => ReadProperty(propertyInfo, newParents, assembly, version))
+                .Select(propertyInfo => ReadProperty(propertyInfo, newParents, assembly, actionNode))
                 .ToList();
         }
 
-        private PropertyNode ReadProperty(PropertyInfo propertyInfo, Type[] newParents, AssemblyNode assembly, string version)
+        private PropertyNode ReadProperty(PropertyInfo propertyInfo, Type[] newParents, AssemblyNode assembly, ActionNode actionNode)
         {
             var propertyType = propertyInfo.PropertyType;
             var propertyNode = new PropertyNode
@@ -427,20 +448,20 @@ namespace Folke.CsTsService
             {
                 if (returnTypeAttributes.Length == 1)
                 {
-                    FillType(propertyNode, returnTypeAttributes[0].ReturnType, assembly, newParents, version);
+                    propertyNode.Type = ReadType(returnTypeAttributes[0].ReturnType, assembly, newParents, actionNode);
                 }
                 else
                 {
                     propertyNode.Type = new TypeNode
                     {
                         Type = TypeIdentifier.Union,
-                        Union = returnTypeAttributes.Select(x => ReadType(x.ReturnType, assembly, newParents, version)).ToArray()
+                        Union = returnTypeAttributes.Select(x => ReadType(x.ReturnType, assembly, newParents, actionNode)).ToArray()
                     };
                 }
             }
             else
             {
-                FillType(propertyNode, propertyType, assembly, newParents, version);
+                propertyNode.Type = ReadType(propertyType, assembly, newParents, actionNode);
             }
 
             var readOnly = propertyInfo.GetCustomAttribute<ReadOnlyAttribute>();
@@ -454,7 +475,7 @@ namespace Folke.CsTsService
                 propertyNode.IsReadOnly = true;
             }
 
-            propertyNode.IsObservable = propertyNode.Name != "id" && !propertyNode.IsReadOnly;
+            propertyNode.Type.IsObservable = propertyNode.Name != "id" && !propertyNode.IsReadOnly;
 
             GetConstraints(propertyInfo.GetCustomAttributes().ToArray(), propertyNode);
 

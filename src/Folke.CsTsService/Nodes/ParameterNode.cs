@@ -1,6 +1,6 @@
 ﻿namespace Folke.CsTsService.Nodes
 {
-    public class ParameterNode : IConstraintsNode, ITypedNode
+    public class ParameterNode : IConstraintsNode
     {
         public string Name { get; set; }
         public string Documentation { get; set; }
