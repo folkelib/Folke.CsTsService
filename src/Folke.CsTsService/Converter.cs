@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
@@ -33,7 +32,6 @@ namespace Folke.CsTsService
         {
             var feature = new ControllerFeature();
             applicationPartManager.PopulateFeature(feature);
-            var converter = new Converter();
             var controllerTypes = feature.Controllers.Select(c => c.AsType());
             return ReadControllers(controllerTypes);
         }
@@ -356,20 +354,20 @@ namespace Folke.CsTsService
             var parameterTypeName = Regex.Replace(parameterType.Name, "`.*", "");
             
             ClassNode classNode;
-            if (assembly.Types.ContainsKey(parameterTypeName))
+            if (assembly.Classes.ContainsKey(parameterTypeName))
             {
-                classNode = assembly.Types[parameterTypeName];
+                classNode = assembly.Classes[parameterTypeName];
             }
             else
             {
                 classNode = new ClassNode
                 {
                     Version = actionNode.Version,
-                    Documentation = documentation.GetDocumentation(parameterType)
+                    Documentation = documentation.GetDocumentation(parameterType),
+                    KoName = parameterTypeName,
+                    Name = Regex.Replace(parameterTypeName, @"View(Model)?$", string.Empty)
                 };
-                
-                classNode.KoName = parameterTypeName;
-                classNode.Name = Regex.Replace(parameterTypeName, @"View(Model)?$", string.Empty);
+
                 if (parameterType.GetTypeInfo().IsEnum)
                 {
                     var enumNames = parameterType.GetTypeInfo().GetEnumNames();
@@ -405,7 +403,7 @@ namespace Folke.CsTsService
                         classNode.IsObservable = jsonAttribute.Observable;
                     }
                 }
-                assembly.Types[classNode.KoName] = classNode;
+                assembly.Classes[classNode.KoName] = classNode;
             }
             return classNode;
         }

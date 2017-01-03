@@ -40,9 +40,14 @@ namespace Folke.CsTsService
             }
 
             if (knockout)
+            {
                 WriteKoViews(assemblyNode);
+            }
             else
+            {
                 WriteViews(assemblyNode);
+                WriteEnums(assemblyNode);
+            }
             
             var output = new StringBuilder();
             foreach (var controllerNode in controllers)
@@ -53,11 +58,13 @@ namespace Folke.CsTsService
             {
                 output.AppendLine("import * as views from \"../views\";");
                 output.AppendLine("import * as koViews from \"./views\";");
+                output.AppendLine("export * from \"../enums\";");
             }
             else
             {
                 output.AppendLine("import * as views from \"./views\";");
-            }
+                output.AppendLine("export * from \"./enums\";");
+           }
 
             output.AppendLine($"import {{ loading }} from \"{serviceHelpersModule}\";");
             output.AppendLine("export * from \"./views\";");
@@ -94,7 +101,20 @@ namespace Folke.CsTsService
          
             OutputModules.Add(knockout ? "ko/services" : "services", output.ToString());
         }
-        
+
+        private void WriteEnums(AssemblyNode assemblyNode)
+        {
+            StringBuilder result = new StringBuilder();
+            var dependencies = new Dependencies();
+
+            foreach (var classNode in assemblyNode.Classes.Where(x => x.Value.Values != null))
+            {
+                WriteTypeDefinition(classNode.Value, result, false, dependencies);
+            }
+
+            OutputModules.Add("enums", result.ToString());
+        }
+
         private void AppendFormatDocumentation(StringBuilder builder, string documentation, string prefix = null)
         {
             if (!string.IsNullOrEmpty(documentation))
@@ -136,12 +156,16 @@ namespace Folke.CsTsService
             {
                 if (dependencies.Views)
                     result.AppendLine("import * as views from \"../views\";");
+                if (dependencies.Enums)
+                    result.AppendLine("import * as enums from \"../enums\";");
 
                 if (dependencies.KoViews)
                     result.AppendLine("import * as koViews from \"./views\";");
             }
             else
             {
+                if (dependencies.Enums)
+                    result.AppendLine("import * as enums from \"./enums\";");
                 if (dependencies.Views)
                     result.AppendLine("import * as views from \"./views\";");
             }
@@ -169,14 +193,22 @@ namespace Folke.CsTsService
 
         private void WriteViews(AssemblyNode assemblyNode)
         {
-            StringBuilder result = new StringBuilder();
-            var dependencies = new Dependencies();
-
-            foreach (var classNode in assemblyNode.Types)
+            StringBuilder body = new StringBuilder();
+            var dependencies = new Dependencies
             {
-                WriteTypeDefinition(classNode.Value, result, false, dependencies);
-            }
+                PrefixModules = PrefixModules.Enums
+            };
 
+            foreach (var classNode in assemblyNode.Classes.Where(x => x.Value.Properties != null))
+            {
+                WriteTypeDefinition(classNode.Value, body, false, dependencies);
+            }
+            var result = new StringBuilder();
+            if (dependencies.Enums)
+            {
+                result.AppendLine("import * as enums from \"./enums\";");
+            }
+            result.Append(body);
             OutputModules.Add("views", result.ToString());
         }
 
@@ -190,25 +222,28 @@ namespace Folke.CsTsService
             public bool KoViews { get; set; }
             public bool Views { get; set; }
             public PrefixModules PrefixModules { get; set; }
-
+            public bool Enums { get; set; }
         }
 
         private void WriteKoViews(AssemblyNode assemblyNode)
         {
             var dependencies = new Dependencies
             {
-                PrefixModules = PrefixModules.Views
+                PrefixModules = PrefixModules.Views | PrefixModules.Enums
             };
             
             var body = new StringBuilder();
-            foreach (var classNode in assemblyNode.Types.Where(x => x.Value.IsObservable))
+            foreach (var classNode in assemblyNode.Classes.Where(x => x.Value.IsObservable))
             {
                 WriteKoClass(classNode.Value, body, dependencies);
             }
 
             var result = new StringBuilder();
             result.AppendLine("import * as ko from \"knockout\";");
-            result.AppendLine("import * as views from \"../views\";");
+            if (dependencies.Views)
+                result.AppendLine("import * as views from \"../views\";");
+            if (dependencies.Enums)
+                result.AppendLine("import * as enums from \"../enums\";");
             if (dependencies.ValidationModule)
             {
                 result.AppendLine($"import * as validation from \"{validationModule}\";");
@@ -655,7 +690,8 @@ namespace Folke.CsTsService
             None = 0,
             Views = 1,
             KoViews = 2,
-            All = 3
+            Enums = 4,
+            All = 7
         }
         
         private void WriteType(TypeNode typeNode, StringBuilder result, bool edition, Dependencies dependencies, bool allowObservable, bool notACollection = false)
@@ -710,10 +746,10 @@ namespace Folke.CsTsService
                     result.Append("string");
                     break;
                 case TypeIdentifier.Enum:
-                    if (dependencies.PrefixModules.HasFlag(PrefixModules.Views))
+                    if (dependencies.PrefixModules.HasFlag(PrefixModules.Enums))
                     {
-                        result.Append("views.");
-                        dependencies.Views = true;
+                        result.Append("enums.");
+                        dependencies.Enums = true;
                     }
                     result.Append(typeNode.Class.Name);
                     break;
