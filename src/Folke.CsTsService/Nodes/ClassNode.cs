@@ -15,21 +15,21 @@ namespace Folke.CsTsService.Nodes
 
         public string Name { get; set; }
 
-        public bool IsReadOnly { get; set; }
+        public bool IsReadOnly { get; private set; } = true;
 
-        private bool? isObservable;
+        private bool? hasObservable;
 
-        public bool IsObservable
+        public bool HasObservable
         {
             get
             {
-                if (isObservable.HasValue) return isObservable.Value;
-                isObservable = !IsReadOnly && Properties != null && Properties.Any(x => x.Type.IsObservable);
-                return isObservable.Value;
+                if (hasObservable.HasValue) return hasObservable.Value;
+                hasObservable = !IsReadOnly && Properties != null && Properties.Any(x => x.Type.IsObservable);
+                return hasObservable.Value;
             }
             set
             {
-                isObservable = value;
+                hasObservable = value;
             }
         }
 
@@ -49,10 +49,13 @@ namespace Folke.CsTsService.Nodes
             if (!IsReadOnly) return;
 
             IsReadOnly = false;
-            foreach (var property in Properties)
+            if (Properties != null)
             {
-                if (property.Type.Type == TypeIdentifier.Object)
-                    property.Type.Class.SetWritable();
+                foreach (var property in Properties)
+                {
+                    if (property.Type.Type == TypeIdentifier.Object)
+                        property.Type.Class.SetWritable();
+                }
             }
         }
     }

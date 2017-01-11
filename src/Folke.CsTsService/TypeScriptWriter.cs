@@ -12,13 +12,15 @@ namespace Folke.CsTsService
         private const string Tab = "    ";
         private readonly string serviceHelpersModule;
         private readonly string validationModule;
+        private readonly TypeScriptOptions options;
 
         public Dictionary<string, string> OutputModules { get; } = new Dictionary<string, string>();
 
-        public TypeScriptWriter(string serviceHelpersModule = "folke-ko-service-helpers", string validationModule = "folke-ko-validation")
+        public TypeScriptWriter(string serviceHelpersModule = "folke-ko-service-helpers", string validationModule = "folke-ko-validation", TypeScriptOptions options = 0)
         {
             this.serviceHelpersModule = serviceHelpersModule;
             this.validationModule = validationModule;
+            this.options = options;
         }
 
         public void WriteToFiles(string basePath)
@@ -59,6 +61,10 @@ namespace Folke.CsTsService
                 output.AppendLine("import * as views from \"../views\";");
                 output.AppendLine("import * as koViews from \"./views\";");
                 output.AppendLine("export * from \"../enums\";");
+                output.Append("export { ");
+                output.Append(string.Join(", ",
+                    assemblyNode.Classes.Values.Where(x => !x.HasObservable && x.Properties != null).Select(x => x.Name)));
+                output.AppendLine(" } from \"../views\";");
             }
             else
             {
@@ -233,7 +239,7 @@ namespace Folke.CsTsService
             };
             
             var body = new StringBuilder();
-            foreach (var classNode in assemblyNode.Classes.Where(x => x.Value.IsObservable))
+            foreach (var classNode in assemblyNode.Classes.Where(x => x.Value.HasObservable))
             {
                 WriteKoClass(classNode.Value, body, dependencies);
             }
@@ -364,7 +370,7 @@ namespace Folke.CsTsService
                 
                 if (propertyNode.Type.IsCollection)
                 {
-                    if (propertyNode.Type.Type == TypeIdentifier.Object && propertyNode.Type.Class.IsObservable)
+                    if (propertyNode.Type.Type == TypeIdentifier.Object && propertyNode.Type.Class.HasObservable)
                     {
                         result.Append($"this.{propertyNode.Name}()");
 
@@ -392,7 +398,7 @@ namespace Folke.CsTsService
                 {
                     result.Append($"this.{propertyNode.Name}()");
 
-                    if (propertyNode.Type.Type == TypeIdentifier.Object && propertyNode.Type.Class.IsObservable)
+                    if (propertyNode.Type.Type == TypeIdentifier.Object && propertyNode.Type.Class.HasObservable)
                     {
                         result.AppendLine($" != undefined && this.{propertyNode.Name}().changed()");
                     }
@@ -424,7 +430,7 @@ namespace Folke.CsTsService
                     result.Append("()");
                 }
 
-                if (property.Type.Type == TypeIdentifier.Object && property.Type.Class.IsObservable)
+                if (property.Type.Type == TypeIdentifier.Object && property.Type.Class.HasObservable)
                 {
                     result.Append($" ? this.{property.Name}");
                     if (property.Type.IsObservable)
@@ -469,7 +475,7 @@ namespace Folke.CsTsService
                 result.Append($"{Tab}{Tab}this.{propertyNode.Name}");
                 if (propertyNode.Type.IsObservable)
                 {
-                    if (propertyNode.Type.Type == TypeIdentifier.Object && propertyNode.Type.Class.IsObservable)
+                    if (propertyNode.Type.Type == TypeIdentifier.Object && propertyNode.Type.Class.HasObservable)
                     {
                         var propertyClassNode = propertyNode.Type.Class;
                         if (propertyNode.Type.IsCollection)
@@ -710,7 +716,7 @@ namespace Folke.CsTsService
                     result.Append(allowObservable ? "Date" : "string");
                     break;
                 case TypeIdentifier.Object:
-                    if (allowObservable && typeNode.Class.IsObservable)
+                    if (allowObservable && typeNode.Class.HasObservable)
                     {
                         if (dependencies.PrefixModules.HasFlag(PrefixModules.KoViews))
                         {
@@ -830,7 +836,9 @@ namespace Folke.CsTsService
                 controllersOutput.AppendLine($"{Tab} */");
             }
 
-            controllersOutput.Append($"{Tab}{methodName}(params: {{");
+            controllersOutput.Append($"{Tab}{methodName}(");
+            if (options.HasFlag(TypeScriptOptions.ParametersInObject))
+                controllersOutput.Append("params: {");
             
             foreach (var parameter in actionNode.Parameters)
             {
@@ -846,7 +854,8 @@ namespace Folke.CsTsService
                 WriteType(parameter.Type, controllersOutput, true, dependencies, allowObservable: knockout);
             }
 
-            controllersOutput.Append("}");
+            if (options.HasFlag(TypeScriptOptions.ParametersInObject))
+                controllersOutput.Append("}");
 
             //if ((actionNode.Type == ActionMethod.Post || actionNode.Type == ActionMethod.Put)
             //    && actionNode.Parameters.All(x => x.Position != ParameterPosition.Body && x.Position != ParameterPosition.FormData))
@@ -869,7 +878,7 @@ namespace Folke.CsTsService
             else
             {
                 controllersOutput.Append(actionNode.Return.Type.IsCollection ? "List" : "Single");
-                if ((actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.IsObservable&& knockout) || actionNode.Return.Type.Type == TypeIdentifier.DateTime)
+                if ((actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.HasObservable&& knockout) || actionNode.Return.Type.Type == TypeIdentifier.DateTime)
                 {
                     controllersOutput.Append("T");
                 }
@@ -884,7 +893,7 @@ namespace Folke.CsTsService
                 {
                     WriteType(actionNode.Return.Type, controllersOutput, false, dependencies, allowObservable: false, notACollection: true);
                     
-                    if (actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.IsObservable && knockout)
+                    if (actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.HasObservable && knockout)
                     {
                         controllersOutput.Append(", ");
                         WriteType(actionNode.Return.Type, controllersOutput, false, dependencies, allowObservable: true, notACollection: true);
@@ -896,7 +905,7 @@ namespace Folke.CsTsService
 
             if (actionNode.Parameters.Any(x => x.Position == ParameterPosition.Path))
             {
-                var route = actionNode.Route.Replace("{", "${params.").Replace("?","");
+                var route = actionNode.Route.Replace("{", options.HasFlag(TypeScriptOptions.ParametersInObject) ? "${params." : "${").Replace("?","");
 
                 controllersOutput.Append($"(`{route}`");
             }
@@ -920,10 +929,22 @@ namespace Folke.CsTsService
                     {
                         controllersOutput.Append(", ");
                     }
-                    controllersOutput.Append($"{parameter.Name}: params.{parameter.Name}");
-                    if (parameter.Type.Type == TypeIdentifier.DateTime)
+
+                    if (options.HasFlag(TypeScriptOptions.ParametersInObject))
                     {
-                        controllersOutput.Append($" && params.{parameter.Name}.toISOString()");
+                        controllersOutput.Append($"{parameter.Name}: params.{parameter.Name}");
+                    }
+                    else
+                    {
+                        controllersOutput.Append($"{parameter.Name}: {parameter.Name}");
+                    }
+
+                    if (parameter.Type.Type == TypeIdentifier.DateTime && knockout)
+                    {
+                        if (options.HasFlag(TypeScriptOptions.ParametersInObject))
+                            controllersOutput.Append($" && params.{parameter.Name}.toISOString()");
+                        else
+                            controllersOutput.Append($" && {parameter.Name}.toISOString()");
                     }
                 }
                 controllersOutput.Append(" })");
@@ -953,7 +974,7 @@ namespace Folke.CsTsService
                 {
                     controllersOutput.Append(", view => new Date(view)");
                 }
-                else if (actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.IsObservable && knockout)
+                else if (actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.HasObservable && knockout)
                 {
                     dependencies.KoViews = true;
                     controllersOutput.Append(", view => new koViews.");
@@ -965,9 +986,11 @@ namespace Folke.CsTsService
             var body = actionNode.Parameters.FirstOrDefault(x => x.Position == ParameterPosition.Body);
             if (body != null)
             {
-                controllersOutput.Append(", JSON.stringify(params.");
+                controllersOutput.Append(", JSON.stringify(");
+                if (options.HasFlag(TypeScriptOptions.ParametersInObject))
+                    controllersOutput.Append("params.");
                 controllersOutput.Append(body.Name);
-                if (body.Type.Type == TypeIdentifier.Object && body.Type.Class.IsObservable && knockout)
+                if (body.Type.Type == TypeIdentifier.Object && body.Type.Class.HasObservable && knockout)
                 {
                     controllersOutput.Append(".toJs()");
                 }

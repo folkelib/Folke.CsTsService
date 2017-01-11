@@ -400,7 +400,7 @@ namespace Folke.CsTsService
                     var jsonAttribute = parameterType.GetTypeInfo().GetCustomAttribute<JsonAttribute>();
                     if (jsonAttribute != null)
                     {
-                        classNode.IsObservable = jsonAttribute.Observable;
+                        classNode.HasObservable = jsonAttribute.Observable;
                     }
                 }
                 assembly.Classes[classNode.KoName] = classNode;
