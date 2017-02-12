@@ -584,7 +584,7 @@ namespace Folke.CsTsService
 
                 if (property.MaximumLength.HasValue)
                 {
-                    result.Append($".addValidator(validation.hasMinLength({property.MaximumLength.Value}))");
+                    result.Append($".addValidator(validation.hasMaxLength({property.MaximumLength.Value}))");
                 }
 
                 if (property.Format == Format.Email)
