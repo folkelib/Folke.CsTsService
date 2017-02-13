@@ -518,7 +518,7 @@ namespace Folke.CsTsService
                     constraintsNode.MaximumLength = stringLengthAttribute.MaximumLength;
                 }
 
-                var minLengthAttribute = attributes.OfType<MaxLengthAttribute>().FirstOrDefault();
+                var minLengthAttribute = attributes.OfType<MinLengthAttribute>().FirstOrDefault();
                 if (minLengthAttribute != null)
                 {
                     constraintsNode.MinimumLength = minLengthAttribute.Length;
