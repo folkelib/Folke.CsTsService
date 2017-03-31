@@ -311,6 +311,7 @@ namespace Folke.CsTsService
             WriteClassName(classNode, true, result);
             result.AppendLine(" {");
             result.Append($"{Tab}originalData: views.");
+            dependencies.Views = true;
             WriteClassName(classNode, false, result);
             result.AppendLine(";");
             result.AppendLine($"{Tab}changed: KnockoutComputed<boolean>;");

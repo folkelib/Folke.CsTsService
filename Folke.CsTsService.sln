@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.25420.1
+# Visual Studio 15
+VisualStudioVersion = 15.0.26228.4
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{48207A16-C9D4-4F63-B27F-D96D4818BB88}"
 EndProject
@@ -9,11 +9,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 	ProjectSection(SolutionItems) = preProject
 		.gitlab-ci.yml = .gitlab-ci.yml
 		build.ps1 = build.ps1
-		global.json = global.json
 		NuGet.Config = NuGet.Config
 	EndProjectSection
 EndProject
-Project("{8BB2217D-0F2D-49D1-97BC-3654ED321F3B}") = "Folke.CsTsService", "src\Folke.CsTsService\Folke.CsTsService.xproj", "{94CA25FD-9EC5-483D-A7ED-5DB0F03D414A}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Folke.CsTsService", "src\Folke.CsTsService\Folke.CsTsService.csproj", "{963E2D04-8C6F-4A8B-980B-DBF9C36E9197}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,15 +20,15 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{94CA25FD-9EC5-483D-A7ED-5DB0F03D414A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{94CA25FD-9EC5-483D-A7ED-5DB0F03D414A}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{94CA25FD-9EC5-483D-A7ED-5DB0F03D414A}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{94CA25FD-9EC5-483D-A7ED-5DB0F03D414A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{963E2D04-8C6F-4A8B-980B-DBF9C36E9197}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{963E2D04-8C6F-4A8B-980B-DBF9C36E9197}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{963E2D04-8C6F-4A8B-980B-DBF9C36E9197}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{963E2D04-8C6F-4A8B-980B-DBF9C36E9197}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{94CA25FD-9EC5-483D-A7ED-5DB0F03D414A} = {48207A16-C9D4-4F63-B27F-D96D4818BB88}
+		{963E2D04-8C6F-4A8B-980B-DBF9C36E9197} = {48207A16-C9D4-4F63-B27F-D96D4818BB88}
 	EndGlobalSection
 EndGlobal
