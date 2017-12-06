@@ -16,7 +16,7 @@ namespace Folke.CsTsService
 
         public Dictionary<string, string> OutputModules { get; } = new Dictionary<string, string>();
 
-        public TypeScriptWriter(string serviceHelpersModule = "folke-ko-service-helpers", string validationModule = "folke-ko-validation", TypeScriptOptions options = 0)
+        public TypeScriptWriter(string serviceHelpersModule = "folke-service-helpers", string validationModule = "folke-ko-validation", TypeScriptOptions options = 0)
         {
             this.serviceHelpersModule = serviceHelpersModule;
             this.validationModule = validationModule;
@@ -56,6 +56,7 @@ namespace Folke.CsTsService
             {
                 output.AppendLine($"import * as {StringHelpers.ToCamelCase(controllerNode.Name)}Group from \"./{StringHelpers.ToCamelCase(controllerNode.Name)}\";");
             }
+            output.AppendLine($"import {{ ApiClient }} from \"{serviceHelpersModule}\";");
             if (knockout)
             {
                 output.AppendLine("import * as views from \"../views\";");
@@ -72,37 +73,19 @@ namespace Folke.CsTsService
                 output.AppendLine("export * from \"./enums\";");
            }
 
-            output.AppendLine($"import {{ loading }} from \"{serviceHelpersModule}\";");
             output.AppendLine("export * from \"./views\";");
-            output.AppendLine($"export {{ loading }} from \"{serviceHelpersModule}\";");
             output.AppendLine();
 
+            output.AppendLine(knockout ? "export class KoServices {" : "export class Services {");
+            output.AppendLine("\tconstructor(private client: ApiClient) {}");
+
             foreach (var controllerNode in controllers)
             {
                 var moduleName = StringHelpers.ToCamelCase(controllerNode.Name);
-                output.AppendLine($"export const {moduleName} = new {moduleName}Group.{controllerNode.Name}Controller();");
+                output.AppendLine($"\t{moduleName} = new {moduleName}Group.{controllerNode.Name}Controller(this.client);");
             }
 
-            output.AppendLine("export const services = {");
-            
-            foreach (var controllerNode in controllers)
-            {
-                var moduleName = StringHelpers.ToCamelCase(controllerNode.Name);
-                output.AppendLine($"{Tab}{moduleName}: {moduleName},");
-            }
-
-            //if (knockout)
-            //{
-            //    output.AppendLine($"{Tab}factories: {{");
-            //    foreach (var classNode in assemblyNode.Types.Values.Where(x => x.IsObservable))
-            //    {
-            //        output.AppendLine($"{Tab}{Tab}create{StringHelpers.ToPascalCase(classNode.KoName)}: (data: views.{classNode.Name}) => new koViews.{classNode.KoName}(data),");
-            //    }
-            // output.AppendLine($"{Tab}}},");
-            //}
-
-            output.AppendLine($"{Tab}loading: loading");
-            output.AppendLine("};");
+            output.AppendLine("}");
             output.AppendLine();
          
             OutputModules.Add(knockout ? "ko/services" : "services", output.ToString());
@@ -148,6 +131,7 @@ namespace Folke.CsTsService
             AppendFormatDocumentation(controllersOutput, controllerNode.Documentation);
 
             controllersOutput.AppendLine($"export class {controllerNode.Name}Controller {{");
+            controllersOutput.AppendLine("\tconstructor(private client: helpers.ApiClient) {}");
             WriteActions(controllerNode, controllersOutput, knockout, dependencies);
             controllersOutput.AppendLine("}");
 
@@ -220,15 +204,12 @@ namespace Folke.CsTsService
 
         private class Dependencies
         {
-            public bool ToDate { get; set; }
-            public bool FromDate { get; set; }
-            public bool ArrayChanged { get; set; }
-            public bool DateArrayChanged { get; set; }
             public bool ValidationModule { get; set; }
             public bool KoViews { get; set; }
             public bool Views { get; set; }
             public PrefixModules PrefixModules { get; set; }
             public bool Enums { get; set; }
+            public bool ServiceHelpers { get; set; }
         }
 
         private void WriteKoViews(AssemblyNode assemblyNode)
@@ -255,36 +236,33 @@ namespace Folke.CsTsService
                 result.AppendLine($"import * as validation from \"{validationModule}\";");
             }
 
-            result.AppendLine($"import {{ loading }} from \"{serviceHelpersModule}\";");
             result.AppendLine();
 
-            if (dependencies.ToDate)
+            if (dependencies.ServiceHelpers)
             {
-                result.AppendLine("function toDate(date:string) {");
-                result.AppendLine($"{Tab}return date != undefined ? new Date(date) : undefined;");
-                result.AppendLine("}");
+                result.AppendLine($"import * as helpers from \"folke-ko-service-helpers\";");
             }
 
-            if (dependencies.FromDate)
-            {
-                result.AppendLine("function fromDate(date:Date) {");
-                result.AppendLine($"{Tab}return date != undefined ? date.toISOString() : undefined;");
-                result.AppendLine("}");
-            }
+            //if (dependencies.FromDate)
+            //{
+            //    result.AppendLine("function fromDate(date:Date) {");
+            //    result.AppendLine($"{Tab}return date != undefined ? date.toISOString() : undefined;");
+            //    result.AppendLine("}");
+            //}
 
-            if (dependencies.ArrayChanged)
-            {
-                result.AppendLine("function arrayChanged<T>(array: KnockoutObservableArray<T>, original: T[]) {");
-                result.AppendLine($"{Tab}return array() && (!original || array().length !== original.length);");
-                result.AppendLine("}");
-            }
+            //if (dependencies.ArrayChanged)
+            //{
+            //    result.AppendLine("function arrayChanged<T>(array: KnockoutObservableArray<T>, original: T[]) {");
+            //    result.AppendLine($"{Tab}return array() && (!original || array().length !== original.length);");
+            //    result.AppendLine("}");
+            //}
 
-            if (dependencies.DateArrayChanged)
-            {
-                result.AppendLine("function dateArrayChanged(array: KnockoutObservableArray<Date>, original: string[]) {");
-                result.AppendLine($"{Tab}return array() && (!original || array().length !== original.length);");
-                result.AppendLine("}");
-            }
+            //if (dependencies.DateArrayChanged)
+            //{
+            //    result.AppendLine("function dateArrayChanged(array: KnockoutObservableArray<Date>, original: string[]) {");
+            //    result.AppendLine($"{Tab}return array() && (!original || array().length !== original.length);");
+            //    result.AppendLine("}");
+            //}
             result.Append(body);
 
             OutputModules.Add("ko/views", result.ToString());
@@ -365,33 +343,28 @@ namespace Folke.CsTsService
 
                 if (propertyNode.Type.Type == TypeIdentifier.DateTime && !propertyNode.Type.IsCollection)
                 {
-                    result.Append("fromDate(");
-                    dependencies.FromDate = true;
+                    result.Append("helpers.fromDate(");
+                    dependencies.ServiceHelpers= true;
                 }
                 
                 if (propertyNode.Type.IsCollection)
                 {
                     if (propertyNode.Type.Type == TypeIdentifier.Object && propertyNode.Type.Class.HasObservable)
                     {
-                        result.Append($"this.{propertyNode.Name}()");
-
-                        result.Append(" != undefined && (");
-                        result.Append($"this.{propertyNode.Name}().length !== this.originalData.{propertyNode.Name}.length");
-                        result.Append($" || this.{propertyNode.Name}().some(x => x.changed())");
-                        result.AppendLine(")");
+                        result.AppendLine($"helpers.hasArrayOfObjectsChanged(this.{propertyNode.Name}, data.{propertyNode.Name})");
                     }
                     else
                     {
                         if (propertyNode.Type.Type == TypeIdentifier.DateTime)
                         {
                             result.AppendLine(
-                                $"dateArrayChanged(this.{propertyNode.Name}, this.originalData.{propertyNode.Name})");
-                            dependencies.DateArrayChanged = true;
+                                $"helpers.dateArrayChanged(this.{propertyNode.Name}, this.originalData.{propertyNode.Name})");
+                            dependencies.ServiceHelpers = true;
                         }
                         else
                         {
-                            result.AppendLine($"arrayChanged(this.{propertyNode.Name}, this.originalData.{propertyNode.Name})");
-                            dependencies.ArrayChanged = true;
+                            result.AppendLine($"helpers.arrayChanged(this.{propertyNode.Name}, this.originalData.{propertyNode.Name})");
+                            dependencies.ServiceHelpers = true;
                         }
                     }
                 }
@@ -422,8 +395,8 @@ namespace Folke.CsTsService
                 result.Append($"{Tab}{Tab}{Tab}{property.Name}: ");
                 if (property.Type.Type == TypeIdentifier.DateTime && !property.Type.IsCollection)
                 {
-                    result.Append("fromDate(");
-                    dependencies.FromDate = true;
+                    result.Append("helpers.fromDate(");
+                    dependencies.ServiceHelpers = true;
                 }
                 result.Append($"this.{property.Name}");
                 if (property.Type.IsObservable)
@@ -500,8 +473,8 @@ namespace Folke.CsTsService
                             }
                             else
                             {
-                                result.Append($"(toDate(data.{propertyNode.Name}))");
-                                dependencies.ToDate = true;
+                                result.Append($"(helpers.toDate(data.{propertyNode.Name}))");
+                                dependencies.ServiceHelpers = true;
                             }
                         }
                         else
@@ -512,8 +485,8 @@ namespace Folke.CsTsService
                 {
                     if (propertyNode.Type.Type == TypeIdentifier.DateTime)
                     {
-                        result.Append($" = toDate(data.{propertyNode.Name})");
-                        dependencies.ToDate = true;
+                        result.Append($" = helpers.toDate(data.{propertyNode.Name})");
+                        dependencies.ServiceHelpers = true;
                     }
                     else
                     {
@@ -528,12 +501,14 @@ namespace Folke.CsTsService
             if (classNode.Properties.Any(x => x.NeedValidation()))
             {
                 result.AppendLine();
-                result.Append($"{Tab}public isValid = ko.computed(() => !loading()");
+                result.Append($"{Tab}public isValid = ko.computed(() => ");
 
-                foreach (var source in classNode.Properties.Where(x => x.NeedValidation()))
-                {
-                    result.Append($" && !this.{source.Name}.validating() && !this.{source.Name}.errorMessage()");
-                }
+                var propertyNodes = classNode.Properties.Where(x => x.NeedValidation()).ToArray();
+                if (!propertyNodes.Any()) result.Append("true");
+                else
+                    result.Append(string.Join(" && ",
+                        propertyNodes.Select(source =>
+                            $" !this.{source.Name}.validating() && !this.{source.Name}.errorMessage()")));
                 result.AppendLine(");");
             }
             result.AppendLine("}");
@@ -682,12 +657,12 @@ namespace Folke.CsTsService
             AppendFormatDocumentation(result, property.Documentation);
 
             result.Append($"{Tab}{property.Name}");
-            if (!property.IsRequired)
-            {
-                result.Append("?");
-            }
             result.Append(": ");
             WriteType(property.Type, result, edition, dependencies, allowObservable: false);
+            if (!property.IsRequired)
+            {
+                result.Append(" | null");
+            }
             result.AppendLine(";");
         }
 
@@ -870,35 +845,25 @@ namespace Folke.CsTsService
             //}
 
             controllersOutput.AppendLine(") {");
-            controllersOutput.Append($"{Tab}{Tab}return helpers.fetch");
+            controllersOutput.Append($"{Tab}{Tab}return this.client.fetch");
 
-            if (actionNode.Return == null)
+            if (actionNode.Return != null)
             {
-                controllersOutput.Append("Void");
-            }
-            else
-            {
-                controllersOutput.Append(actionNode.Return.Type.IsCollection ? "List" : "Single");
-                if ((actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.HasObservable&& knockout) || actionNode.Return.Type.Type == TypeIdentifier.DateTime)
-                {
-                    controllersOutput.Append("T");
-                }
+                controllersOutput.Append("Json");
+                //if ((actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.HasObservable&& knockout) || actionNode.Return.Type.Type == TypeIdentifier.DateTime)
+                //{
+                //    controllersOutput.Append("T");
+                //}
 
                 controllersOutput.Append("<");
 
                 if (actionNode.Return.Type.Type == TypeIdentifier.DateTime)
                 {
-                    controllersOutput.Append("string, Date");
+                    controllersOutput.Append("string");
                 }
                 else
                 {
-                    WriteType(actionNode.Return.Type, controllersOutput, false, dependencies, allowObservable: false, notACollection: true);
-                    
-                    if (actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.HasObservable && knockout)
-                    {
-                        controllersOutput.Append(", ");
-                        WriteType(actionNode.Return.Type, controllersOutput, false, dependencies, allowObservable: true, notACollection: true);
-                    }
+                    WriteType(actionNode.Return.Type, controllersOutput, false, dependencies, allowObservable: false);
                 }
 
                 controllersOutput.Append(">");
@@ -968,22 +933,7 @@ namespace Folke.CsTsService
                     break;
             }
             controllersOutput.Append("\"");
-
-            if (actionNode.Return != null)
-            {
-                if (actionNode.Return.Type.Type == TypeIdentifier.DateTime)
-                {
-                    controllersOutput.Append(", view => new Date(view)");
-                }
-                else if (actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.HasObservable && knockout)
-                {
-                    dependencies.KoViews = true;
-                    controllersOutput.Append(", view => new koViews.");
-                    controllersOutput.Append(actionNode.Return.Type.Class.KoName);
-                    controllersOutput.Append("(view)");
-                }
-            }
-
+            
             var body = actionNode.Parameters.FirstOrDefault(x => x.Position == ParameterPosition.Body);
             if (body != null)
             {
@@ -999,10 +949,36 @@ namespace Folke.CsTsService
             }
             else
             {
-                controllersOutput.Append(", null");
+                controllersOutput.Append(", undefined");
             }
 
-            controllersOutput.AppendLine(");");
+            controllersOutput.Append(")");
+
+            if (actionNode.Return != null && actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.HasObservable && knockout)
+            {
+                controllersOutput.Append(".then(");
+                if (actionNode.Return.Type.IsCollection)
+                {
+                    controllersOutput.Append("x => x.map(");
+                }
+
+                if (actionNode.Return.Type.Type == TypeIdentifier.DateTime)
+                {
+                    controllersOutput.Append("view => new Date(view)");
+                }
+                else if (actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.HasObservable && knockout)
+                {
+                    dependencies.KoViews = true;
+                    controllersOutput.Append("view => new koViews.");
+                    controllersOutput.Append(actionNode.Return.Type.Class.KoName);
+                    controllersOutput.Append("(view)");
+                }
+
+                if (actionNode.Return.Type.IsCollection) controllersOutput.Append(")");
+                controllersOutput.Append(")");
+            }
+
+            controllersOutput.AppendLine(";");
             controllersOutput.AppendLine($"{Tab}}}");
         }
     }
