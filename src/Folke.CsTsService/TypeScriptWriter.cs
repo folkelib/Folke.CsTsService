@@ -41,6 +41,7 @@ namespace Folke.CsTsService
                 WriteController(controllerNode, knockout);
             }
 
+            bool hasEnums = true;
             if (knockout)
             {
                 WriteKoViews(assemblyNode);
@@ -48,7 +49,7 @@ namespace Folke.CsTsService
             else
             {
                 WriteViews(assemblyNode);
-                WriteEnums(assemblyNode);
+                hasEnums = WriteEnums(assemblyNode);
             }
             
             var output = new StringBuilder();
@@ -70,7 +71,7 @@ namespace Folke.CsTsService
             else
             {
                 output.AppendLine("import * as views from \"./views\";");
-                output.AppendLine("export * from \"./enums\";");
+                if (hasEnums) output.AppendLine("export * from \"./enums\";");
            }
 
             output.AppendLine("export * from \"./views\";");
@@ -91,17 +92,24 @@ namespace Folke.CsTsService
             OutputModules.Add(knockout ? "ko/services" : "services", output.ToString());
         }
 
-        private void WriteEnums(AssemblyNode assemblyNode)
+        private bool WriteEnums(AssemblyNode assemblyNode)
         {
             StringBuilder result = new StringBuilder();
             var dependencies = new Dependencies();
+            int count = 0;
 
             foreach (var classNode in assemblyNode.Classes.Where(x => x.Value.Values != null))
             {
                 WriteTypeDefinition(classNode.Value, result, false, dependencies);
+                count++;
             }
 
-            OutputModules.Add("enums", result.ToString());
+            if (count > 0)
+            {
+                OutputModules.Add("enums", result.ToString());
+                return true;
+            }
+            else return false;
         }
 
         private void AppendFormatDocumentation(StringBuilder builder, string documentation, string prefix = null)
