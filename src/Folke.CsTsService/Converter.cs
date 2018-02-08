@@ -260,25 +260,33 @@ namespace Folke.CsTsService
         public TypeNode ReadType(Type parameterType, AssemblyNode assembly, Type[] parents, ActionNode actionNode)
         {
             var typeNode = new TypeNode();
-            if (Nullable.GetUnderlyingType(parameterType) == null && parameterType.GetTypeInfo().IsGenericType)
+
+            for(;;)
             {
-                if (parameterType.ImplementsInterface(typeof(IDictionary<,>)))
+                if (Nullable.GetUnderlyingType(parameterType) == null && parameterType.GetTypeInfo().IsGenericType)
                 {
-                    typeNode.IsDictionary = true;
-                    parameterType = parameterType.GenericTypeArguments[1];
+                    if (parameterType.ImplementsInterface(typeof(IDictionary<,>)))
+                    {
+                        typeNode.Modifiers.Add(TypeModifier.Dictionary);
+                        parameterType = parameterType.GenericTypeArguments[1];
+                    }
+                    else if (parameterType.ImplementsInterface(typeof(IEnumerable<>)))
+                    {
+                        typeNode.Modifiers.Add(TypeModifier.Array);
+                        parameterType = parameterType.GenericTypeArguments[0];
+                    }
                 }
-                else if (parameterType.ImplementsInterface(typeof(IEnumerable<>)))
+                else if (parameterType.IsArray)
                 {
-                    typeNode.IsCollection = true;
-                    parameterType = parameterType.GenericTypeArguments[0];
+                    typeNode.Modifiers.Add(TypeModifier.Array);
+                    parameterType = parameterType.GetElementType();
+                }
+                else
+                {
+                    break;
                 }
             }
 
-            if (parameterType.IsArray)
-            {
-                typeNode.IsCollection = true;
-                parameterType = parameterType.GetElementType();
-            }
 
             if (parameterType.GetTypeInfo().IsGenericType)
             {
@@ -306,6 +314,10 @@ namespace Folke.CsTsService
             else if (parameterType == typeof(float))
             {
                 typeNode.Type = TypeIdentifier.Float;
+            }
+            else if (parameterType == typeof(byte))
+            {
+                typeNode.Type = TypeIdentifier.Byte;
             }
             else if (parameterType == typeof(double))
             {

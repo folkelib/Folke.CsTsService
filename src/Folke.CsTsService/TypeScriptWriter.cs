@@ -678,11 +678,33 @@ namespace Folke.CsTsService
         
         private void WriteType(TypeNode typeNode, StringBuilder result, bool edition, Dependencies dependencies, bool allowObservable, bool notACollection = false)
         {
-            if (typeNode.IsDictionary)
+            foreach (var modifier in typeNode.Modifiers)
             {
-                result.Append("{ [key: string]: ");
+                if (modifier == TypeModifier.Dictionary)
+                {
+                    result.Append("{ [key: string]: ");
+                }
             }
 
+            WriteTypeWithoutModifiers(typeNode, result, edition, dependencies, allowObservable);
+
+            foreach (var modifier in typeNode.Modifiers)
+            {
+                if (modifier == TypeModifier.Array && !notACollection)
+                {
+                    result.Append("[]");
+                }
+
+                if (modifier == TypeModifier.Dictionary)
+                {
+                    result.Append(" }");
+                }
+            }
+        }
+
+        private void WriteTypeWithoutModifiers(TypeNode typeNode, StringBuilder result, bool edition, Dependencies dependencies,
+            bool allowObservable)
+        {
             switch (typeNode.Type)
             {
                 case TypeIdentifier.Boolean:
@@ -720,6 +742,7 @@ namespace Folke.CsTsService
                 case TypeIdentifier.Float:
                 case TypeIdentifier.Int:
                 case TypeIdentifier.Long:
+                case TypeIdentifier.Byte:
                     result.Append("number");
                     break;
                 case TypeIdentifier.Guid:
@@ -739,18 +762,18 @@ namespace Folke.CsTsService
                     result.Append("any");
                     break;
                 case TypeIdentifier.Union:
+                {
+                    bool first = true;
+                    foreach (var type in typeNode.Union)
                     {
-                        bool first = true;
-                        foreach (var type in typeNode.Union)
-                        {
-                            if (first)
-                                first = false;
-                            else
-                                result.Append(" | ");
-                            WriteType(type, result, edition, dependencies, allowObservable);
-                        }
-                        break;
+                        if (first)
+                            first = false;
+                        else
+                            result.Append(" | ");
+                        WriteType(type, result, edition, dependencies, allowObservable);
                     }
+                    break;
+                }
                 case TypeIdentifier.GenericParameter:
                     result.Append(typeNode.GenericName);
                     break;
@@ -775,16 +798,6 @@ namespace Folke.CsTsService
                     WriteType(genericType, result, edition, dependencies, false);
                 }
                 result.Append(">");
-            }
-
-            if (typeNode.IsCollection && !notACollection)
-            {
-                result.Append("[]");
-            }
-
-            if (typeNode.IsDictionary)
-            {
-                result.Append(" }");
             }
         }
 

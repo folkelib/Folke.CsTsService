@@ -10,12 +10,13 @@ namespace Folke.CsTsService.Nodes
         public TypeNode[] Union { get; internal set; }
 
         public bool IsObservable { get; set; }
-        public bool IsCollection { get; set; }
 
-        public bool IsDictionary { get; set; }
+        public List<TypeModifier> Modifiers { get; } = new List<TypeModifier>();
 
         public List<TypeNode> GenericParameters { get; set; }
 
         public string GenericName { get; set; }
+        public bool IsCollection => this.Modifiers.Count == 1 && Modifiers[0] == TypeModifier.Array;
+        public bool IsDictionary => Modifiers.Count == 1 && Modifiers[0] == TypeModifier.Dictionary;
     }
 }

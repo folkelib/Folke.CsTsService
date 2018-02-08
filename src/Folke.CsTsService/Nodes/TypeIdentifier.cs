@@ -16,6 +16,7 @@
         Any,
         TimeSpan,
         Union,
-        GenericParameter
+        GenericParameter,
+        Byte
     }
 }
