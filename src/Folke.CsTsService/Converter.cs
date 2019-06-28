@@ -11,7 +11,6 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Folke.Mvc.Extensions;
 using Newtonsoft.Json;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
@@ -202,7 +201,7 @@ namespace Folke.CsTsService
                     returnType = returnType.GenericTypeArguments[0];
                 }
 
-                if (returnType.GetTypeInfo().IsGenericType && returnType.GetGenericTypeDefinition() == typeof(IHttpActionResult<>))
+                if (returnType.GetTypeInfo().IsGenericType && returnType.GetGenericTypeDefinition() == typeof(ActionResult<>))
                 {
                     returnType = returnType.GenericTypeArguments[0];
                 }
@@ -408,12 +407,6 @@ namespace Folke.CsTsService
                     {
                         classNode.GenericParameters = parameterType.GetGenericArguments().Select(x => x.Name).ToList();
                     }
-
-                    var jsonAttribute = parameterType.GetTypeInfo().GetCustomAttribute<JsonAttribute>();
-                    if (jsonAttribute != null)
-                    {
-                        classNode.HasObservable = jsonAttribute.Observable;
-                    }
                 }
                 assembly.Classes[classNode.KoName] = classNode;
             }
@@ -453,19 +446,19 @@ namespace Folke.CsTsService
                 Documentation = documentation.GetDocumentation(propertyInfo)
             };
 
-            var returnTypeAttributes = propertyInfo.GetCustomAttributes<ReturnTypeAttribute>().ToArray();
+            var returnTypeAttributes = propertyInfo.GetCustomAttributes<UnionTypeAttribute>().ToArray();
             if (returnTypeAttributes.Any())
             {
                 if (returnTypeAttributes.Length == 1)
                 {
-                    propertyNode.Type = ReadType(returnTypeAttributes[0].ReturnType, assembly, newParents, actionNode);
+                    propertyNode.Type = ReadType(returnTypeAttributes[0].Type, assembly, newParents, actionNode);
                 }
                 else
                 {
                     propertyNode.Type = new TypeNode
                     {
                         Type = TypeIdentifier.Union,
-                        Union = returnTypeAttributes.Select(x => ReadType(x.ReturnType, assembly, newParents, actionNode)).ToArray()
+                        Union = returnTypeAttributes.Select(x => ReadType(x.Type, assembly, newParents, actionNode)).ToArray()
                     };
                 }
             }

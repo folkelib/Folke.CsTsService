@@ -24,7 +24,7 @@ namespace Folke.CsTsService.Tests
             var assemblyNode = converter.ReadControllers(new[] {typeof(TestController)});
 
             // Act
-            writer.WriteAssembly(assemblyNode, false);
+            writer.WriteAssembly(assemblyNode);
 
             // Assert
             var service = writer.OutputModules["test"];

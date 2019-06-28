@@ -5,3 +5,5 @@ src/Folke.CsTsService/bin
 *.user
 *.lock.json
 obj
+
+/tests/Folke.CsTsService.Tests/bin

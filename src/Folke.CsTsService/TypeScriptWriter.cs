@@ -26,22 +26,25 @@ namespace Folke.CsTsService
         public void WriteToFiles(string basePath)
         {
             Directory.CreateDirectory(basePath);
-            Directory.CreateDirectory($"{basePath}/ko");
+            if (options.HasFlag(TypeScriptOptions.Knockout))
+            {
+                Directory.CreateDirectory($"{basePath}/ko");
+            }
             foreach (var outputModule in OutputModules)
             {
                 File.WriteAllText($"{basePath}/{outputModule.Key}.ts", outputModule.Value);
             }
         }
 
-        public void WriteAssembly(AssemblyNode assemblyNode, bool knockout)
+        public void WriteAssembly(AssemblyNode assemblyNode)
         {
             var controllers = assemblyNode.Controllers.OrderBy(x => x.Name).ToArray();
             foreach (var controllerNode in controllers)
             {
-                WriteController(controllerNode, knockout);
+                WriteController(controllerNode);
             }
 
-            if (knockout)
+            if (options.HasFlag(TypeScriptOptions.Knockout))
             {
                 WriteKoViews(assemblyNode);
             }
@@ -57,7 +60,7 @@ namespace Folke.CsTsService
                 output.AppendLine($"import * as {StringHelpers.ToCamelCase(controllerNode.Name)}Group from \"./{StringHelpers.ToCamelCase(controllerNode.Name)}\";");
             }
             output.AppendLine($"import {{ ApiClient }} from \"{serviceHelpersModule}\";");
-            if (knockout)
+            if (options.HasFlag(TypeScriptOptions.Knockout))
             {
                 output.AppendLine("import * as views from \"../views\";");
                 output.AppendLine("import * as koViews from \"./views\";");
@@ -76,7 +79,7 @@ namespace Folke.CsTsService
             output.AppendLine("export * from \"./views\";");
             output.AppendLine();
 
-            output.AppendLine(knockout ? "export class KoServices {" : "export class Services {");
+            output.AppendLine(options.HasFlag(TypeScriptOptions.Knockout) ? "export class KoServices {" : "export class Services {");
             output.AppendLine("\tconstructor(private client: ApiClient) {}");
 
             foreach (var controllerNode in controllers)
@@ -88,7 +91,7 @@ namespace Folke.CsTsService
             output.AppendLine("}");
             output.AppendLine();
          
-            OutputModules.Add(knockout ? "ko/services" : "services", output.ToString());
+            OutputModules.Add(options.HasFlag(TypeScriptOptions.Knockout) ? "ko/services" : "services", output.ToString());
         }
 
         private void WriteEnums(AssemblyNode assemblyNode)
@@ -119,7 +122,7 @@ namespace Folke.CsTsService
             }
         }
 
-        private void WriteController(ActionsGroupNode controllerNode, bool knockout)
+        private void WriteController(ActionsGroupNode controllerNode)
         {
             var dependencies = new Dependencies
             {
@@ -132,7 +135,7 @@ namespace Folke.CsTsService
 
             controllersOutput.AppendLine($"export class {controllerNode.Name}Controller {{");
             controllersOutput.AppendLine("\tconstructor(private client: helpers.ApiClient) {}");
-            WriteActions(controllerNode, controllersOutput, knockout, dependencies);
+            WriteActions(controllerNode, controllersOutput, dependencies);
             controllersOutput.AppendLine("}");
 
             controllersOutput.AppendLine();
@@ -142,7 +145,7 @@ namespace Folke.CsTsService
             var result = new StringBuilder();
             result.AppendLine("/* This is a generated file. Do not modify or all the changes will be lost. */");
             result.AppendLine($"import * as helpers from \"{serviceHelpersModule}\";");
-            if (knockout)
+            if (options.HasFlag(TypeScriptOptions.Knockout))
             {
                 if (dependencies.Views)
                     result.AppendLine("import * as views from \"../views\";");
@@ -162,10 +165,10 @@ namespace Folke.CsTsService
             result.AppendLine();
             result.Append(controllersOutput);
 
-            OutputModules.Add(knockout ? $"ko/{moduleName}" : moduleName, result.ToString());
+            OutputModules.Add(options.HasFlag(TypeScriptOptions.Knockout) ? $"ko/{moduleName}" : moduleName, result.ToString());
         }
 
-        private void WriteActions(ActionsGroupNode controllerNode, StringBuilder controllersOutput, bool knockout, Dependencies dependencies)
+        private void WriteActions(ActionsGroupNode controllerNode, StringBuilder controllersOutput, Dependencies dependencies)
         {
             var actions = controllerNode.Actions.OrderBy(x => x.Name).ThenBy(x => x.Parameters.Count).ToArray();
             foreach (var actionNode in actions)
@@ -177,7 +180,7 @@ namespace Folke.CsTsService
                     methodName += sameName.IndexOf(actionNode) + 1;
                 }
 
-                WriteAction(methodName, actionNode, controllersOutput, knockout, dependencies);
+                WriteAction(methodName, actionNode, controllersOutput, dependencies);
             }
         }
 
@@ -801,7 +804,7 @@ namespace Folke.CsTsService
             }
         }
 
-        private void WriteAction(string methodName, ActionNode actionNode, StringBuilder controllersOutput, bool knockout, Dependencies dependencies)
+        private void WriteAction(string methodName, ActionNode actionNode, StringBuilder controllersOutput, Dependencies dependencies)
         {
             controllersOutput.AppendLine();
 
@@ -840,7 +843,7 @@ namespace Folke.CsTsService
                 if (!parameter.IsRequired)
                     controllersOutput.Append("?");
                 controllersOutput.Append(": ");
-                WriteType(parameter.Type, controllersOutput, true, dependencies, allowObservable: knockout);
+                WriteType(parameter.Type, controllersOutput, true, dependencies, allowObservable: options.HasFlag(TypeScriptOptions.Knockout));
             }
 
             if (options.HasFlag(TypeScriptOptions.ParametersInObject))
@@ -918,7 +921,7 @@ namespace Folke.CsTsService
                         controllersOutput.Append($"{parameter.Name}: {parameter.Name}");
                     }
 
-                    if (parameter.Type.Type == TypeIdentifier.DateTime && knockout)
+                    if (parameter.Type.Type == TypeIdentifier.DateTime && options.HasFlag(TypeScriptOptions.Knockout))
                     {
                         if (options.HasFlag(TypeScriptOptions.ParametersInObject))
                             controllersOutput.Append($" && params.{parameter.Name}.toISOString()");
@@ -954,7 +957,7 @@ namespace Folke.CsTsService
                 if (options.HasFlag(TypeScriptOptions.ParametersInObject))
                     controllersOutput.Append("params.");
                 controllersOutput.Append(body.Name);
-                if (body.Type.Type == TypeIdentifier.Object && body.Type.Class.HasObservable && knockout)
+                if (body.Type.Type == TypeIdentifier.Object && body.Type.Class.HasObservable && options.HasFlag(TypeScriptOptions.Knockout))
                 {
                     controllersOutput.Append(".toJs()");
                 }
@@ -967,7 +970,7 @@ namespace Folke.CsTsService
 
             controllersOutput.Append(")");
 
-            if (actionNode.Return != null && actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.HasObservable && knockout)
+            if (actionNode.Return != null && actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.HasObservable && options.HasFlag(TypeScriptOptions.Knockout))
             {
                 controllersOutput.Append(".then(");
                 if (actionNode.Return.Type.IsCollection)
@@ -979,7 +982,7 @@ namespace Folke.CsTsService
                 {
                     controllersOutput.Append("view => new Date(view)");
                 }
-                else if (actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.HasObservable && knockout)
+                else if (actionNode.Return.Type.Type == TypeIdentifier.Object && actionNode.Return.Type.Class.HasObservable && options.HasFlag(TypeScriptOptions.Knockout))
                 {
                     dependencies.KoViews = true;
                     controllersOutput.Append("view => new koViews.");
