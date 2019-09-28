@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
+using Namotion.Reflection;
 
 namespace Folke.CsTsService
 {
@@ -22,7 +23,7 @@ namespace Folke.CsTsService
         private readonly Documentation documentation;
         private static readonly Regex NameCleaner = new Regex(@"`\d+");
 
-        public Converter(Documentation documentation = null)
+        public Converter(Documentation? documentation = null)
         {
             this.documentation = documentation ?? new Documentation();
         }
@@ -51,20 +52,13 @@ namespace Folke.CsTsService
 
         public ActionsGroupNode ReadController(Type type, AssemblyNode assemblyNode)
         {
-            var controller = new ActionsGroupNode
-            {
-                Assembly = assemblyNode
-            };
-
-            string routePrefix = null;
+            var name = type.Name.Replace("Controller", string.Empty);
+            name = NameCleaner.Replace(name, string.Empty);
+            var controller = new ActionsGroupNode(assemblyNode, name);
+            
             var routePrefixAttribute = type.GetTypeInfo().GetCustomAttribute<RouteAttribute>(false) ?? type.GetTypeInfo().GetCustomAttribute<RouteAttribute>();
-            if (routePrefixAttribute != null)
-            {
-                routePrefix = routePrefixAttribute.Template;
-            }
-
-            controller.Name = type.Name.Replace("Controller", string.Empty);
-            controller.Name = NameCleaner.Replace(controller.Name, string.Empty);
+            string routePrefix = routePrefixAttribute != null ? routePrefixAttribute.Template : "todo";
+            
             controller.Documentation = documentation.GetDocumentation(type);
 
             foreach (var methodInfo in type.GetMethods().Where(x => x.IsPublic))
@@ -81,30 +75,30 @@ namespace Folke.CsTsService
             return controller;
         }
 
-        public ActionNode ReadAction(string routePrefix, MethodInfo methodInfo, ActionsGroupNode actionsGroup)
+        public ActionNode? ReadAction(string routePrefix, MethodInfo methodInfo, ActionsGroupNode actionsGroup)
         {
-            var actionNode = new ActionNode {Group = actionsGroup};
-
-            string route = null;
+            
+            string? route = null;
+            ActionMethod actionMethod = ActionMethod.Unknown;
 
             if (methodInfo.GetCustomAttribute<HttpGetAttribute>() != null)
             {
-                actionNode.Type = ActionMethod.Get;
+                actionMethod = ActionMethod.Get;
                 route = methodInfo.GetCustomAttribute<HttpGetAttribute>().Template;
             }
             else if (methodInfo.GetCustomAttribute<HttpPostAttribute>() != null)
             {
-                actionNode.Type = ActionMethod.Post;
+                actionMethod = ActionMethod.Post;
                 route = methodInfo.GetCustomAttribute<HttpPostAttribute>().Template;
             }
             else if (methodInfo.GetCustomAttribute<HttpPutAttribute>() != null)
             {
-                actionNode.Type = ActionMethod.Put;
+                actionMethod = ActionMethod.Put;
                 route = methodInfo.GetCustomAttribute<HttpPutAttribute>().Template;
             }
             else if (methodInfo.GetCustomAttribute<HttpDeleteAttribute>() != null)
             {
-                actionNode.Type = ActionMethod.Delete;
+                actionMethod = ActionMethod.Delete;
                 route = methodInfo.GetCustomAttribute<HttpDeleteAttribute>().Template;
             }
 
@@ -119,12 +113,12 @@ namespace Folke.CsTsService
                 return null;
             }
 
-            if (actionNode.Type == ActionMethod.Unknown)
+            if (actionMethod == ActionMethod.Unknown)
             {
-                if (methodInfo.Name.StartsWith("Get", StringComparison.OrdinalIgnoreCase)) actionNode.Type = ActionMethod.Get;
-                else if (methodInfo.Name.StartsWith("Post", StringComparison.OrdinalIgnoreCase)) actionNode.Type = ActionMethod.Post;
-                else if (methodInfo.Name.StartsWith("Put", StringComparison.OrdinalIgnoreCase)) actionNode.Type = ActionMethod.Put;
-                else if (methodInfo.Name.StartsWith("Delete", StringComparison.OrdinalIgnoreCase)) actionNode.Type = ActionMethod.Delete;
+                if (methodInfo.Name.StartsWith("Get", StringComparison.OrdinalIgnoreCase)) actionMethod = ActionMethod.Get;
+                else if (methodInfo.Name.StartsWith("Post", StringComparison.OrdinalIgnoreCase)) actionMethod = ActionMethod.Post;
+                else if (methodInfo.Name.StartsWith("Put", StringComparison.OrdinalIgnoreCase)) actionMethod = ActionMethod.Put;
+                else if (methodInfo.Name.StartsWith("Delete", StringComparison.OrdinalIgnoreCase)) actionMethod = ActionMethod.Delete;
                 else
                     return null;
             }
@@ -139,8 +133,10 @@ namespace Folke.CsTsService
             {
                 route = $"{routePrefix}/{route}";
             }
+            route = route.Replace("[controller]", actionsGroup.Name);
 
-            actionNode.Name = methodInfo.Name;
+            var actionNode = new ActionNode(actionsGroup, methodInfo.Name, route);
+            actionNode.Type = actionMethod;
             actionNode.Route = route;
 
             var versionMatch = Regex.Match(route, @"api/v([\d\.])+");
@@ -161,7 +157,7 @@ namespace Folke.CsTsService
                 actionNode.Documentation = summary.Value;
             }
 
-            Dictionary<string, XElement> parameterNodes = null;
+            Dictionary<string, XElement>? parameterNodes = null;
 
             if (methodNode != null)
             {
@@ -187,13 +183,13 @@ namespace Folke.CsTsService
                 }
             }
 
-            Type returnType;
-            var returnTypeAttribute = methodInfo.GetCustomAttribute<ProducesResponseTypeAttribute>();
-            if (returnTypeAttribute != null)
-            {
-                returnType = returnTypeAttribute.Type;
-            }
-            else
+            Type? returnType;
+            //var returnTypeAttribute = methodInfo.GetCustomAttribute<ProducesResponseTypeAttribute>();
+            //if (returnTypeAttribute != null)
+            //{
+            //    returnType = returnTypeAttribute.Type;
+            //}
+            //else
             {
                 returnType = methodInfo.ReturnType;
                 if (returnType.GetTypeInfo().IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
@@ -221,16 +217,21 @@ namespace Folke.CsTsService
             return actionNode;
         }
 
-        public ParameterNode ReadParameter(ParameterInfo parameterInfo, XElement documentationNode, AssemblyNode assembly, Dictionary<string, bool> routeParameters, ActionNode actionNode)
+        public ParameterNode ReadParameter(ParameterInfo parameterInfo, XElement? documentationNode, AssemblyNode assembly, Dictionary<string, bool> routeParameters, ActionNode actionNode)
         {
-            var parameterNode = new ParameterNode { Name = parameterInfo.Name };
+            var parameterContext = parameterInfo.ToContextualParameter();
             var parameterType = parameterInfo.ParameterType;
+            var type = ReadType(parameterType, assembly, new Type[0], actionNode);
+            var parameterNode = new ParameterNode(parameterInfo.Name, type);
             parameterNode.Documentation = documentation.ParseDocumentation(documentationNode);
             parameterNode.IsRequired = RemoveNullable(ref parameterType);
+            if (parameterContext.Nullability == Nullability.Nullable)
+            {
+                parameterNode.Type.IsNullable = true;
+            }
             if (parameterInfo.DefaultValue != null)
                 parameterNode.IsRequired = false;
-            parameterNode.Type = ReadType(parameterType, assembly, new Type[0], actionNode);
-
+            
             if (routeParameters.ContainsKey(parameterInfo.Name))
             {
                 parameterNode.Position = ParameterPosition.Path;
@@ -259,8 +260,13 @@ namespace Folke.CsTsService
         public TypeNode ReadType(Type parameterType, AssemblyNode assembly, Type[] parents, ActionNode actionNode)
         {
             var typeNode = new TypeNode();
+            if (Nullable.GetUnderlyingType(parameterType) != null)
+            {
+                parameterType = Nullable.GetUnderlyingType(parameterType);
+                typeNode.IsNullable = true;
+            }
 
-            for(;;)
+            for (;;)
             {
                 if (Nullable.GetUnderlyingType(parameterType) == null && parameterType.GetTypeInfo().IsGenericType)
                 {
@@ -371,12 +377,10 @@ namespace Folke.CsTsService
             }
             else
             {
-                classNode = new ClassNode
+                classNode = new ClassNode(Regex.Replace(parameterTypeName, @"View(Model)?$", string.Empty))
                 {
                     Version = actionNode.Version,
-                    Documentation = documentation.GetDocumentation(parameterType),
-                    KoName = parameterTypeName,
-                    Name = Regex.Replace(parameterTypeName, @"View(Model)?$", string.Empty)
+                    Documentation = documentation.GetDocumentation(parameterType)
                 };
 
                 if (parameterType.GetTypeInfo().IsEnum)
@@ -384,12 +388,11 @@ namespace Folke.CsTsService
                     var enumNames = parameterType.GetTypeInfo().GetEnumNames();
                     var enumValues = parameterType.GetTypeInfo().GetEnumValues();
 
-                    classNode.Values = new List<EnumValueNode>();
                     for (var i = 0; i < enumValues.Length; i++)
                     {
-                        var enumValue = new EnumValueNode
+                        classNode.Values = new List<EnumValueNode>();
+                        var enumValue = new EnumValueNode(enumNames[i])
                         {
-                            Name = enumNames[i],
                             Value = Convert.ToInt32(enumValues.GetValue(i)),
                             Documentation = documentation.GetDocumentation(parameterType, enumNames[i])
                         };
@@ -408,18 +411,18 @@ namespace Folke.CsTsService
                         classNode.GenericParameters = parameterType.GetGenericArguments().Select(x => x.Name).ToList();
                     }
                 }
-                assembly.Classes[classNode.KoName] = classNode;
+
+                assembly.Classes[classNode.Name] = classNode;
             }
             return classNode;
         }
 
 
-        private ReturnNode ReadReturn(Type responseType, AssemblyNode assembly, XElement documentationNode, ActionNode actionNode)
+        private ReturnNode ReadReturn(Type responseType, AssemblyNode assembly, XElement? documentationNode, ActionNode actionNode)
         {
-            var returnNode = new ReturnNode
+            var returnNode = new ReturnNode(ReadType(responseType, assembly, new Type[0], actionNode))
             {
                 Documentation = documentation.ParseDocumentation(documentationNode),
-                Type = ReadType(responseType, assembly, new Type[0], actionNode)
             };
             return returnNode;
         }
@@ -439,23 +442,18 @@ namespace Folke.CsTsService
         private PropertyNode ReadProperty(PropertyInfo propertyInfo, Type[] newParents, AssemblyNode assembly, ActionNode actionNode)
         {
             var propertyType = propertyInfo.PropertyType;
-            var propertyNode = new PropertyNode
-            {
-                Name = StringHelpers.ToCamelCase(propertyInfo.Name),
-                IsRequired = RemoveNullable(ref propertyType),
-                Documentation = documentation.GetDocumentation(propertyInfo)
-            };
-
+            
             var returnTypeAttributes = propertyInfo.GetCustomAttributes<UnionTypeAttribute>().ToArray();
+            TypeNode type;
             if (returnTypeAttributes.Any())
             {
                 if (returnTypeAttributes.Length == 1)
                 {
-                    propertyNode.Type = ReadType(returnTypeAttributes[0].Type, assembly, newParents, actionNode);
+                    type = ReadType(returnTypeAttributes[0].Type, assembly, newParents, actionNode);
                 }
                 else
                 {
-                    propertyNode.Type = new TypeNode
+                    type = new TypeNode
                     {
                         Type = TypeIdentifier.Union,
                         Union = returnTypeAttributes.Select(x => ReadType(x.Type, assembly, newParents, actionNode)).ToArray()
@@ -464,7 +462,18 @@ namespace Folke.CsTsService
             }
             else
             {
-                propertyNode.Type = ReadType(propertyType, assembly, newParents, actionNode);
+                type = ReadType(propertyType, assembly, newParents, actionNode);
+            }
+
+            var propertyNode = new PropertyNode(StringHelpers.ToCamelCase(propertyInfo.Name), type)
+            {
+                Documentation = documentation.GetDocumentation(propertyInfo)
+            };
+
+            var propertyContext = propertyInfo.ToContextualProperty();
+            if (propertyContext.Nullability == Nullability.Nullable)
+            {
+                propertyNode.Type.IsNullable = true;
             }
 
             var readOnly = propertyInfo.GetCustomAttribute<ReadOnlyAttribute>();
@@ -477,11 +486,8 @@ namespace Folke.CsTsService
             {
                 propertyNode.IsReadOnly = true;
             }
-
-            propertyNode.Type.IsObservable = propertyNode.Name != "id" && !propertyNode.IsReadOnly;
-
+            
             GetConstraints(propertyInfo.GetCustomAttributes().ToArray(), propertyNode);
-
             return propertyNode;
         }
 
@@ -493,18 +499,18 @@ namespace Folke.CsTsService
 
         private static bool RemoveNullable(ref Type parameterType)
         {
-            var required = true;
+            var nullable = false;
             if (Nullable.GetUnderlyingType(parameterType) != null)
             {
-                required = false;
+                nullable = true;
                 parameterType = Nullable.GetUnderlyingType(parameterType);
             }
 
             if (!parameterType.GetTypeInfo().IsValueType)
             {
-                required = false;
+                nullable = true;
             }
-            return required;
+            return nullable;
         }
 
         private static void GetConstraints(Attribute[] attributes, IConstraintsNode constraintsNode)

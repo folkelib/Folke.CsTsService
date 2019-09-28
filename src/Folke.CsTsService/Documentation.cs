@@ -24,27 +24,27 @@ namespace Folke.CsTsService
             }
         }
 
-        public string GetDocumentation(MethodInfo method)
+        public string? GetDocumentation(MethodInfo method)
         {
             return ParseDocumentation(GetMethodDocumentation(method));
         }
 
-        public string GetDocumentation(Type type)
+        public string? GetDocumentation(Type type)
         {
             return ParseDocumentation(GetTypeDocumentation(type));
         }
 
-        public string GetDocumentation(PropertyInfo propertyInfo)
+        public string? GetDocumentation(PropertyInfo propertyInfo)
         {
             return ParseDocumentation(GetPropertyDocumentation(propertyInfo));
         }
 
-        public string GetDocumentation(Type type, string enumValueName)
+        public string? GetDocumentation(Type type, string enumValueName)
         {
             return ParseDocumentation(GetEnumValueDocumentation(type, enumValueName));
         }
 
-        public XElement GetMethodDocumentation(MethodInfo method)
+        public XElement? GetMethodDocumentation(MethodInfo method)
         {
             Debug.Assert(method.DeclaringType != null, "method.DeclaringType != null");
             var name = "M:" + method.DeclaringType.FullName + "." + method.Name + "("
@@ -69,14 +69,14 @@ namespace Folke.CsTsService
             return type.FullName;
         }
 
-        private XElement GetTypeDocumentation(Type type)
+        private XElement? GetTypeDocumentation(Type type)
         {
             var name = "T:" + type.FullName;
             if (!memberDocumentationNodes.ContainsKey(name)) return null;
             return memberDocumentationNodes[name];
         }
 
-        public XElement GetPropertyDocumentation(PropertyInfo property)
+        public XElement? GetPropertyDocumentation(PropertyInfo property)
         {
             Debug.Assert(property.DeclaringType != null, "property.DeclaringType != null");
             var name = "P:" + property.DeclaringType.FullName.Replace("+", ".") + "." + property.Name;
@@ -84,14 +84,14 @@ namespace Folke.CsTsService
             return memberDocumentationNodes[name];
         }
 
-        private XElement GetEnumValueDocumentation(Type type, string enumValueName)
+        private XElement? GetEnumValueDocumentation(Type type, string enumValueName)
         {
             var name = "F:" + type.FullName.Replace("+", ".") + "." + enumValueName;
             if (!memberDocumentationNodes.ContainsKey(name)) return null;
             return memberDocumentationNodes[name];
         }
 
-        public string ParseDocumentation(XElement documentationNode)
+        public string? ParseDocumentation(XElement? documentationNode)
         {
             return documentationNode?.Value;
         }

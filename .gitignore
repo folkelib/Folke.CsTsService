@@ -7,3 +7,4 @@ src/Folke.CsTsService/bin
 obj
 
 /tests/Folke.CsTsService.Tests/bin
+*.orig
