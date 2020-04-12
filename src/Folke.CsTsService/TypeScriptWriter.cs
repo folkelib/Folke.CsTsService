@@ -222,7 +222,7 @@ namespace Folke.CsTsService
             }
             else if (viewNode.Values != null)
             {
-                result.AppendLine($"export const enum {name} {{");
+                result.AppendLine($"export enum {name} {{");
                 bool first = true;
                 foreach (var value in viewNode.Values)
                 {
@@ -252,6 +252,7 @@ namespace Folke.CsTsService
             AppendFormatDocumentation(result, property.Documentation);
 
             result.Append($"{Tab}{property.Name}");
+            if (property.Type.IsOptional) result.Append("?");
             result.Append(": ");
             WriteType(property.Type, result, edition, dependencies);
             result.AppendLine(";");
@@ -262,7 +263,6 @@ namespace Folke.CsTsService
         {
             None = 0,
             Views = 1,
-            KoViews = 2,
             Enums = 4,
             All = 7
         }
@@ -382,6 +382,7 @@ namespace Folke.CsTsService
             }
 
             if (typeNode.IsNullable) result.Append(" | null");
+            if (typeNode.IsOptional) result.Append(" | undefined");
         }
 
         private void WriteAction(string methodName, ActionNode actionNode, StringBuilder controllersOutput, Dependencies dependencies)
@@ -509,6 +510,9 @@ namespace Folke.CsTsService
             {
                 case ActionMethod.Delete:
                     controllersOutput.Append("DELETE");
+                    break;
+                case ActionMethod.Patch:
+                    controllersOutput.Append("PATCH");
                     break;
                 case ActionMethod.Get:
                     controllersOutput.Append("GET");

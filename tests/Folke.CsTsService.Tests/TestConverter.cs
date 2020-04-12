@@ -40,17 +40,17 @@ export class TestController {
     }
 }
 
-", service);
+", service.Replace("\r\n", "\n"));
             var views = writer.OutputModules["views"];
             Assert.Equal(@"
 export interface Test {
-    toto: { [key: string]: string } | null;
+    toto: { [key: string]: string };
 
-    dicOfDic: { [key: string]: { [key: string]: number } } | null;
+    dicOfDic: { [key: string]: { [key: string]: number } };
 
     byte: number;
 }
-", views);
+", views.Replace("\r\n", "\n"));
         }
 
         private class TestView
@@ -61,12 +61,10 @@ export interface Test {
         }
 
         [Route("test")]
-        private class TestController : Controller
+        private class TestController : ControllerBase
         {
-            [HttpGet]
-            [ProducesResponseType(typeof(TestView), 200)]
-            [Route("")]
-            public IActionResult Get()
+            [HttpGet("")]
+            public ActionResult<TestView> Get()
             {
                 return Ok();
             }

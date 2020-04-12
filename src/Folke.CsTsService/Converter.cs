@@ -15,6 +15,7 @@ using Newtonsoft.Json;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Namotion.Reflection;
+using Folke.CsTsService.Optional;
 
 namespace Folke.CsTsService
 {
@@ -101,6 +102,12 @@ namespace Folke.CsTsService
                 actionMethod = ActionMethod.Delete;
                 route = methodInfo.GetCustomAttribute<HttpDeleteAttribute>().Template;
             }
+            else if (methodInfo.GetCustomAttribute<HttpPatchAttribute>() != null)
+            {
+                actionMethod = ActionMethod.Patch;
+                route = methodInfo.GetCustomAttribute<HttpPatchAttribute>().Template;
+            }
+
 
             var routeAttribute = methodInfo.GetCustomAttribute<RouteAttribute>();
             if (routeAttribute != null)
@@ -183,32 +190,19 @@ namespace Folke.CsTsService
                 }
             }
 
-            Type? returnType;
-            //var returnTypeAttribute = methodInfo.GetCustomAttribute<ProducesResponseTypeAttribute>();
-            //if (returnTypeAttribute != null)
-            //{
-            //    returnType = returnTypeAttribute.Type;
-            //}
-            //else
+            ContextualType returnType = methodInfo.ReturnParameter.ToContextualParameter();
+            if (returnType.Type.IsGenericType && returnType.Type.GetGenericTypeDefinition() == typeof(Task<>))
             {
-                returnType = methodInfo.ReturnType;
-                if (returnType.GetTypeInfo().IsGenericType && returnType.GetGenericTypeDefinition() == typeof(Task<>))
-                {
-                    returnType = returnType.GenericTypeArguments[0];
-                }
-
-                if (returnType.GetTypeInfo().IsGenericType && returnType.GetGenericTypeDefinition() == typeof(ActionResult<>))
-                {
-                    returnType = returnType.GenericTypeArguments[0];
-                }
-
-                if (returnType.GetInterfaces().Contains(typeof(IActionResult)) || returnType == typeof(IActionResult) || returnType == typeof(Task))
-                {
-                    returnType = null;
-                }
+                returnType = returnType.GenericArguments[0];
             }
 
-            if (returnType != null && returnType != typeof(void))
+            if (returnType.Type.IsGenericType && returnType.Type.GetGenericTypeDefinition() == typeof(ActionResult<>))
+            {
+                returnType = returnType.GenericArguments[0];
+            }
+
+            if (!returnType.Type.GetInterfaces().Contains(typeof(IActionResult)) && returnType.Type != typeof(IActionResult) && returnType.Type != typeof(Task)
+                && returnType.Type != typeof(void))
             {
                 var returnDocumentation = methodNode?.Element("returns");
                 actionNode.Return = ReadReturn(returnType, actionsGroup.Assembly, returnDocumentation, actionNode);
@@ -221,14 +215,10 @@ namespace Folke.CsTsService
         {
             var parameterContext = parameterInfo.ToContextualParameter();
             var parameterType = parameterInfo.ParameterType;
-            var type = ReadType(parameterType, assembly, new Type[0], actionNode);
+            var type = ReadType(parameterInfo.ToContextualParameter(), assembly, new Type[0], actionNode);
             var parameterNode = new ParameterNode(parameterInfo.Name, type);
             parameterNode.Documentation = documentation.ParseDocumentation(documentationNode);
-            parameterNode.IsRequired = RemoveNullable(ref parameterType);
-            if (parameterContext.Nullability == Nullability.Nullable)
-            {
-                parameterNode.Type.IsNullable = true;
-            }
+            parameterNode.IsRequired = !type.IsNullable;
             if (parameterInfo.DefaultValue != null)
                 parameterNode.IsRequired = false;
             
@@ -257,34 +247,42 @@ namespace Folke.CsTsService
             return parameterNode;
         }
         
-        public TypeNode ReadType(Type parameterType, AssemblyNode assembly, Type[] parents, ActionNode actionNode)
+        public TypeNode ReadType(ContextualType contextualType, AssemblyNode assembly, Type[] parents, ActionNode actionNode)
         {
             var typeNode = new TypeNode();
-            if (Nullable.GetUnderlyingType(parameterType) != null)
+            if (contextualType.Nullability == Nullability.Nullable)
             {
-                parameterType = Nullable.GetUnderlyingType(parameterType);
                 typeNode.IsNullable = true;
             }
 
             for (;;)
             {
-                if (Nullable.GetUnderlyingType(parameterType) == null && parameterType.GetTypeInfo().IsGenericType)
+                if (contextualType.GenericArguments.Length > 0)
                 {
-                    if (parameterType.ImplementsInterface(typeof(IDictionary<,>)))
+                    if (contextualType.Type.ImplementsInterface(typeof(IDictionary<,>)))
                     {
                         typeNode.Modifiers.Add(TypeModifier.Dictionary);
-                        parameterType = parameterType.GenericTypeArguments[1];
+                        contextualType = contextualType.GenericArguments[1];
                     }
-                    else if (parameterType.ImplementsInterface(typeof(IEnumerable<>)))
+                    else if (contextualType.Type.ImplementsInterface(typeof(IEnumerable<>)))
                     {
                         typeNode.Modifiers.Add(TypeModifier.Array);
-                        parameterType = parameterType.GenericTypeArguments[0];
+                        contextualType = contextualType.GenericArguments[0];
+                    }
+                    else if (contextualType.Type.GetGenericTypeDefinition() == typeof(Optional<>))
+                    {
+                        typeNode.IsOptional = true;
+                        contextualType = contextualType.GenericArguments[0];
+                    }
+                    else
+                    {
+                        break;
                     }
                 }
-                else if (parameterType.IsArray)
+                else if (contextualType.Type.IsArray)
                 {
                     typeNode.Modifiers.Add(TypeModifier.Array);
-                    parameterType = parameterType.GetElementType();
+                    contextualType= contextualType.ElementType;
                 }
                 else
                 {
@@ -292,10 +290,11 @@ namespace Folke.CsTsService
                 }
             }
 
+            var parameterType = contextualType.Type;
 
             if (parameterType.GetTypeInfo().IsGenericType)
             {
-                typeNode.GenericParameters = parameterType.GenericTypeArguments.Select(x => ReadType(x, assembly, parents, actionNode)).ToList();
+                typeNode.GenericParameters = contextualType.GenericArguments.Select(x => ReadType(x, assembly, parents, actionNode)).ToList();
                 parameterType = parameterType.GetGenericTypeDefinition();
             }
 
@@ -387,10 +386,10 @@ namespace Folke.CsTsService
                 {
                     var enumNames = parameterType.GetTypeInfo().GetEnumNames();
                     var enumValues = parameterType.GetTypeInfo().GetEnumValues();
+                    classNode.Values = new List<EnumValueNode>();
 
                     for (var i = 0; i < enumValues.Length; i++)
                     {
-                        classNode.Values = new List<EnumValueNode>();
                         var enumValue = new EnumValueNode(enumNames[i])
                         {
                             Value = Convert.ToInt32(enumValues.GetValue(i)),
@@ -418,7 +417,7 @@ namespace Folke.CsTsService
         }
 
 
-        private ReturnNode ReadReturn(Type responseType, AssemblyNode assembly, XElement? documentationNode, ActionNode actionNode)
+        private ReturnNode ReadReturn(ContextualType responseType, AssemblyNode assembly, XElement? documentationNode, ActionNode actionNode)
         {
             var returnNode = new ReturnNode(ReadType(responseType, assembly, new Type[0], actionNode))
             {
@@ -442,27 +441,27 @@ namespace Folke.CsTsService
         private PropertyNode ReadProperty(PropertyInfo propertyInfo, Type[] newParents, AssemblyNode assembly, ActionNode actionNode)
         {
             var propertyType = propertyInfo.PropertyType;
-            
-            var returnTypeAttributes = propertyInfo.GetCustomAttributes<UnionTypeAttribute>().ToArray();
+
+            var unionTypeAttributes = propertyInfo.GetCustomAttributes<UnionTypeAttribute>().ToArray();
             TypeNode type;
-            if (returnTypeAttributes.Any())
+            if (unionTypeAttributes.Any())
             {
-                if (returnTypeAttributes.Length == 1)
+                if (unionTypeAttributes.Length == 1)
                 {
-                    type = ReadType(returnTypeAttributes[0].Type, assembly, newParents, actionNode);
+                    type = ReadType(unionTypeAttributes[0].Type.ToContextualType(), assembly, newParents, actionNode);
                 }
                 else
                 {
                     type = new TypeNode
                     {
                         Type = TypeIdentifier.Union,
-                        Union = returnTypeAttributes.Select(x => ReadType(x.Type, assembly, newParents, actionNode)).ToArray()
+                        Union = unionTypeAttributes.Select(x => ReadType(x.Type.ToContextualType(), assembly, newParents, actionNode)).ToArray()
                     };
                 }
             }
             else
             {
-                type = ReadType(propertyType, assembly, newParents, actionNode);
+                type = ReadType(propertyInfo.ToContextualMember(), assembly, newParents, actionNode);
             }
 
             var propertyNode = new PropertyNode(StringHelpers.ToCamelCase(propertyInfo.Name), type)

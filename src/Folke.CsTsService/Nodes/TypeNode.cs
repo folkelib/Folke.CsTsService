@@ -14,6 +14,8 @@ namespace Folke.CsTsService.Nodes
         public List<TypeNode>? GenericParameters { get; set; }
         public bool IsNullable { get; set; }
 
+        public bool IsOptional { get; set; }
+
         public string? GenericName { get; set; }
         public bool IsCollection => this.Modifiers.Count == 1 && Modifiers[0] == TypeModifier.Array;
         public bool IsDictionary => Modifiers.Count == 1 && Modifiers[0] == TypeModifier.Dictionary;
