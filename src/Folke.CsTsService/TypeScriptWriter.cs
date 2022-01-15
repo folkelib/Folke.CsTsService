@@ -409,7 +409,7 @@ namespace Folke.CsTsService
                 controllersOutput.AppendLine($"{Tab} */");
             }
 
-            controllersOutput.Append($"{Tab}{methodName}(");
+            controllersOutput.Append($"{Tab}{methodName} = (");
             if (options.HasFlag(TypeScriptOptions.ParametersInObject))
                 controllersOutput.Append("params: {");
             
@@ -441,7 +441,7 @@ namespace Folke.CsTsService
             //    controllersOutput.Append("data: any");
             //}
 
-            controllersOutput.AppendLine(") {");
+            controllersOutput.AppendLine(") => {");
             controllersOutput.Append($"{Tab}{Tab}return this.client.fetch");
 
             if (actionNode.Return != null)

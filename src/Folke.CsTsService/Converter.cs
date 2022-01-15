@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using Folke.CsTsService.Nodes;
 using System.Linq;
@@ -16,6 +15,7 @@ using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Namotion.Reflection;
 using Folke.CsTsService.Optional;
+using System.ComponentModel.DataAnnotations;
 
 namespace Folke.CsTsService
 {
@@ -282,6 +282,7 @@ namespace Folke.CsTsService
                 else if (contextualType.Type.IsArray)
                 {
                     typeNode.Modifiers.Add(TypeModifier.Array);
+                    if (contextualType.ElementType == null) break;
                     contextualType= contextualType.ElementType;
                 }
                 else
@@ -461,7 +462,7 @@ namespace Folke.CsTsService
             }
             else
             {
-                type = ReadType(propertyInfo.ToContextualMember(), assembly, newParents, actionNode);
+                type = ReadType(propertyInfo.ToContextualProperty().PropertyType, assembly, newParents, actionNode);
             }
 
             var propertyNode = new PropertyNode(StringHelpers.ToCamelCase(propertyInfo.Name), type)

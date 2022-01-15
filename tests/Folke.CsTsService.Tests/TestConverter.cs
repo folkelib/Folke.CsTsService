@@ -35,7 +35,7 @@ import * as views from ""./views"";
 export class TestController {
 	constructor(private client: helpers.ApiClient) {}
 
-    get() {
+    get = () => {
         return this.client.fetchJson<views.Test>(""test/"", ""GET"", undefined);
     }
 }

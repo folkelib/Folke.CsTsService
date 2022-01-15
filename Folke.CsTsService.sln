@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.26730.16
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.32014.148
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{48207A16-C9D4-4F63-B27F-D96D4818BB88}"
 EndProject
@@ -14,7 +14,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Folke.CsTsService", "src\Folke.CsTsService\Folke.CsTsService.csproj", "{963E2D04-8C6F-4A8B-980B-DBF9C36E9197}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Folke.CsTsService.Tests", "tests\Folke.CsTsService.Tests\Folke.CsTsService.Tests.csproj", "{0E0AD833-828E-44EA-A771-D67A0D79FBC1}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Folke.CsTsService.Tests", "tests\Folke.CsTsService.Tests\Folke.CsTsService.Tests.csproj", "{0E0AD833-828E-44EA-A771-D67A0D79FBC1}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{6A160311-F136-4F79-BFD5-D86385EC688F}"
 EndProject
