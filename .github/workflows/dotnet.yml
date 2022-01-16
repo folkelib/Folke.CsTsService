@@ -42,9 +42,9 @@ jobs:
           echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
       - name: Pack
-        run: dotnet build --configuration Release /p:Version=$VERSION
+        run: dotnet pack --configuration Release /p:Version=$VERSION
 
       - name: Push
-        run: dotnet nuget push --api-key $NUGET_TOKEN --source https://api.nuget.org/v3/index.json ./src/Folke.CsTsService/bin/Release/netstandard2.1/*.nupkg
+        run: dotnet nuget push --api-key $NUGET_TOKEN --source https://api.nuget.org/v3/index.json "**/*.nupkg"
         env:
           NUGET_TOKEN: ${{ secrets.NUGET_TOKEN }}
