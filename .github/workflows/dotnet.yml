@@ -33,8 +33,7 @@ jobs:
     steps:
       - name: Set version from tag
         run: |
-          VERSION=$(echo $GITHUB_REF | sed -e 's/refs\/tags\///g')
-          echo $VERSION >> $GITHUB_ENV
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
       - name: Pack
         run: dotnet build --configuration Release /p:Version=$VERSION
