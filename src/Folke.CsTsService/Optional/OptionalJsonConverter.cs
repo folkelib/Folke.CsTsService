@@ -13,7 +13,10 @@
 
         public override Optional<T> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            return JsonSerializer.Deserialize<T>(ref reader, options);
+            var result = JsonSerializer.Deserialize<T>(ref reader, options);
+            if (result == null)
+                return Optional<T>.Undefined;
+            return result;
         }
 
         public override void Write(Utf8JsonWriter writer, Optional<T> value, JsonSerializerOptions options)

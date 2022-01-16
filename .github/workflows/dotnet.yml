@@ -45,6 +45,6 @@ jobs:
         run: dotnet build --configuration Release /p:Version=$VERSION
 
       - name: Push
-        run: dotnet nuget push --api-key $NUGET_TOKEN --source https://api.nuget.org/v3/index.json ./src/Folke.CsTsService/bin/Release/*.nupkg
+        run: dotnet nuget push --api-key $NUGET_TOKEN --source https://api.nuget.org/v3/index.json ./src/Folke.CsTsService/bin/Release/netstandard2.1/*.nupkg
         env:
           NUGET_TOKEN: ${{ secrets.NUGET_TOKEN }}
