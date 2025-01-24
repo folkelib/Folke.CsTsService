@@ -1,9 +1,6 @@
-Folke.CsTsService
-======
+# Folke.CsTsService
 
-This is a library to create a Typescript client from a .NET MVC6 Controllers.
-
-[![Build status](https://ci.appveyor.com/api/projects/status/w2jisrm1r8v3g55u?svg=true)](https://ci.appveyor.com/project/acastaner/folke-cstsservice)
+This is a library to create a Typescript client from a .NET MVC Controllers.
 
 ### Usage
 
@@ -12,14 +9,15 @@ add a new entry point to your project that will write the Typescript file instea
 serving web pages.
 
 Sample entry point:
+
 ```cs
 public class Program
 {
 	static void Main(string[] args)
 	{
 		var converter = new Converter(new WaAdapter());
-		converter.Write(new [] { typeof(MyController).Assembly}, 
-			"src/services.ts", 
+		converter.Write(new [] { typeof(MyController).Assembly},
+			"src/services.ts",
 			"bower_components/folke-ko-service-helpers/folke-ko-service-helpers",
 			"bower_components/folke-ko-validation/folke-ko-validation");
 	}

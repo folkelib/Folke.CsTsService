@@ -190,7 +190,7 @@ namespace Folke.CsTsService
                 }
             }
 
-            ContextualType returnType = methodInfo.ReturnParameter.ToContextualParameter();
+            ContextualType returnType = methodInfo.ReturnParameter.ToContextualParameter().ParameterType;
             if (returnType.Type.IsGenericType && returnType.Type.GetGenericTypeDefinition() == typeof(Task<>))
             {
                 returnType = returnType.GenericArguments[0];
@@ -215,7 +215,7 @@ namespace Folke.CsTsService
         {
             var parameterContext = parameterInfo.ToContextualParameter();
             var parameterType = parameterInfo.ParameterType;
-            var type = ReadType(parameterInfo.ToContextualParameter(), assembly, new Type[0], actionNode);
+            var type = ReadType(parameterInfo.ToContextualParameter().ParameterType, assembly, new Type[0], actionNode);
             var parameterNode = new ParameterNode(parameterInfo.Name, type);
             parameterNode.Documentation = documentation.ParseDocumentation(documentationNode);
             parameterNode.IsRequired = !type.IsNullable;
