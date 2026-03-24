@@ -6,14 +6,14 @@ namespace Folke.CsTsService
 {
     public static class ApplicationPartManagerExtensions
     {
-        public static void CreateTypeScriptServices(this ApplicationPartManager applicationPartManager, string typeScriptPath, TypeScriptOptions options)
+        public static void CreateTypeScriptServices(this ApplicationPartManager applicationPartManager, string typeScriptPath, TypeScriptOptions options, string serviceHelpersModule = "folke-service-helpers")
         {
             ControllerFeature feature = new ControllerFeature();
             applicationPartManager.PopulateFeature(feature);
             var controllerTypes = feature.Controllers.Select(c => c.AsType());
             var converter = new Converter();
             var assembly = converter.ReadControllers(controllerTypes);
-            var typeScript = new TypeScriptWriter(options: options);
+            var typeScript = new TypeScriptWriter(serviceHelpersModule, options);
             typeScript.WriteAssembly(assembly);
             typeScript.WriteToFiles(typeScriptPath);
         }

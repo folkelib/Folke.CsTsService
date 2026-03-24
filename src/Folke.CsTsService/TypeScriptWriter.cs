@@ -11,15 +11,13 @@ namespace Folke.CsTsService
     {
         private const string Tab = "    ";
         private readonly string serviceHelpersModule;
-        private readonly string validationModule;
         private readonly TypeScriptOptions options;
 
         public Dictionary<string, string> OutputModules { get; } = new Dictionary<string, string>();
 
-        public TypeScriptWriter(string serviceHelpersModule = "folke-service-helpers", string validationModule = "folke-ko-validation", TypeScriptOptions options = 0)
+        public TypeScriptWriter(string serviceHelpersModule = "folke-service-helpers", TypeScriptOptions options = 0)
         {
             this.serviceHelpersModule = serviceHelpersModule;
-            this.validationModule = validationModule;
             this.options = options;
         }
 
